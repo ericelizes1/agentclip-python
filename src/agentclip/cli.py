@@ -79,7 +79,8 @@ def slideshow_create(
     except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
 
-    StateStore().remember(
+    store = StateStore()
+    store.remember(
         result.id,
         write_token=result.write_token,
         share_url=result.share_url,
@@ -92,9 +93,19 @@ def slideshow_create(
         summary=(
             f'created slideshow {result.id}\n'
             f'  share: {result.share_url}\n'
-            f'  write_token cached in {StateStore().path}'
+            f'  write_token cached in {store.path}'
         ),
     )
+
+    # First-create nudge: fires once if no whoami is set, then never
+    # again. The flag lives in state.json so it survives restarts.
+    if store.get_whoami() is None and not store.get_flag('credit_nudge_shown'):
+        if not as_json:
+            typer.echo('')
+            typer.echo("  tip: credit yourself on clips you make.")
+            typer.echo("       agentclip whoami --set 'Your Name' --url https://you.example")
+            typer.echo("       (this hint shows once; clear with `agentclip whoami --skip-tip`)")
+        store.set_flag('credit_nudge_shown')
 
 
 # ---------- slideshow add ----------
@@ -244,6 +255,82 @@ def install_skill(
     with resources.as_file(skill_source) as src_path:
         shutil.copyfile(src_path, dest)
     typer.echo(f'installed skill to {dest}')
+
+    # Interactive whoami prompt: only fire when stdin is a TTY (so CI
+    # and scripted use don't wedge on input). Skipped silently when
+    # whoami is already set so a re-install does not re-prompt.
+    store = StateStore()
+    if sys.stdin.isatty() and store.get_whoami() is None:
+        typer.echo('')
+        typer.echo('optional: credit yourself on clips you create.')
+        name = typer.prompt('  name (or press Enter to skip)', default='', show_default=False)
+        if name.strip():
+            url = typer.prompt('  url (or press Enter to skip)', default='', show_default=False)
+            store.set_whoami(name.strip(), url.strip() or None)
+            label = f'"{name.strip()}"'
+            if url.strip():
+                label += f' -> {url.strip()}'
+            typer.echo(f'  saved. clips will display "Filed by {label}".')
+            typer.echo("  change anytime: agentclip whoami --set '...' --url '...'")
+
+
+# ---------- whoami ----------
+
+
+@app.command('whoami')
+def whoami(
+    set_name: str | None = typer.Option(
+        None, '--set', help='Set the creator credit name displayed on clips you make.'
+    ),
+    url: str | None = typer.Option(
+        None, '--url', help='Optional URL the credit links to (portfolio, GitHub, LinkedIn).',
+    ),
+    clear: bool = typer.Option(
+        False, '--clear', help='Remove the stored creator credit.'
+    ),
+    skip_tip: bool = typer.Option(
+        False, '--skip-tip', help='Suppress the first-create credit nudge without setting a credit.',
+    ),
+) -> None:
+    '''Manage the creator credit applied to every clip you create.
+
+    Without flags: prints the stored credit (or "no credit set").
+    With --set: stores the credit so every future slideshow_create
+    auto-applies it. With --clear: removes the stored credit.
+    With --skip-tip: marks the first-create nudge as shown.
+    '''
+    store = StateStore()
+
+    if clear:
+        store.clear_whoami()
+        typer.echo('credit cleared.')
+        return
+
+    if skip_tip:
+        store.set_flag('credit_nudge_shown')
+        typer.echo('first-create nudge suppressed.')
+        return
+
+    if set_name is not None:
+        if not set_name.strip():
+            raise _bail('--set requires a non-empty name.')
+        store.set_whoami(set_name.strip(), url.strip() if url else None)
+        label = f'"{set_name.strip()}"'
+        if url and url.strip():
+            label += f' -> {url.strip()}'
+        typer.echo(f'saved. clips will display "Filed by {label}".')
+        return
+
+    # No flags: print current credit.
+    current = store.get_whoami()
+    if current is None:
+        typer.echo('no credit set.')
+        typer.echo("  set with: agentclip whoami --set 'Your Name' --url https://you.example")
+    else:
+        line = f'name: {current["name"]}'
+        if current['url']:
+            line += f'\n url:  {current["url"]}'
+        typer.echo(line)
 
 
 # ---------- version ----------
