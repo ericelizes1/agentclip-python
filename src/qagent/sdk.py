@@ -16,13 +16,14 @@ Design notes:
 
 from __future__ import annotations
 
+import mimetypes
 import os
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from ._models import SlideshowCreated
+from ._models import SlideAdded, SlideshowCreated, SlideshowPatched, SlideUpdated
 
 DEFAULT_BASE_URL = 'https://qagent.app'
 '''Public hosted backend. Override with QAGENT_BASE_URL or base_url=.'''
@@ -92,6 +93,107 @@ class QAgentClient:
         response = self._http.post(f'{self.base_url}/api/slideshow/', json=payload)
         return SlideshowCreated.model_validate(self._parse(response, expected=201))
 
+    def add_slide(
+        self,
+        slideshow_id: str,
+        *,
+        image_path: str | os.PathLike[str],
+        caption: str,
+        write_token: str,
+    ) -> SlideAdded:
+        '''Append a slide. The slide's ``position`` is assigned by the backend.
+
+        Captions and images are uploaded together as one multipart request
+        so a network failure cannot leave a slide with one and not the other.
+        '''
+        image = _resolve_image(image_path)
+        with image.open('rb') as fh:
+            files = {'image': (image.name, fh, _guess_mime(image))}
+            data = {'caption': caption}
+            response = self._http.post(
+                f'{self.base_url}/api/slideshow/{slideshow_id}/slides/',
+                files=files,
+                data=data,
+                headers=_auth(write_token),
+            )
+        return SlideAdded.model_validate(self._parse(response, expected=201))
+
+    def update_slide(
+        self,
+        slideshow_id: str,
+        slide_position: int,
+        *,
+        image_path: str | os.PathLike[str] | None = None,
+        caption: str | None = None,
+        write_token: str,
+    ) -> SlideUpdated:
+        '''Replace fields on an existing slide. Image, caption, or both.
+
+        At least one of ``image_path`` and ``caption`` must be provided —
+        a no-op PATCH would silently succeed and waste a round-trip.
+        '''
+        if image_path is None and caption is None:
+            raise QAgentError('update_slide requires image_path and/or caption')
+
+        url = f'{self.base_url}/api/slideshow/{slideshow_id}/slides/{slide_position}/'
+        headers = _auth(write_token)
+        data: dict[str, str] = {}
+        if caption is not None:
+            data['caption'] = caption
+
+        if image_path is not None:
+            image = _resolve_image(image_path)
+            with image.open('rb') as fh:
+                files = {'image': (image.name, fh, _guess_mime(image))}
+                response = self._http.patch(url, files=files, data=data, headers=headers)
+        else:
+            # No image, no multipart needed — simpler JSON keeps the request
+            # debuggable in curl and matches Django's PATCH expectations.
+            response = self._http.patch(url, json=data, headers=headers)
+
+        return SlideUpdated.model_validate(self._parse(response, expected=200))
+
+    def set_summary(
+        self,
+        slideshow_id: str,
+        *,
+        summary: str,
+        write_token: str,
+    ) -> SlideshowPatched:
+        '''Set the slideshow's TL;DR. Called near the end of an agent run.
+
+        Title and description live on the same endpoint; if you ever need
+        to mutate them, drop down to ``patch_slideshow``.
+        '''
+        return self.patch_slideshow(slideshow_id, summary=summary, write_token=write_token)
+
+    def patch_slideshow(
+        self,
+        slideshow_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        summary: str | None = None,
+        write_token: str,
+    ) -> SlideshowPatched:
+        '''Lower-level PATCH. ``set_summary`` is the named shortcut callers want.'''
+        payload: dict[str, str] = {}
+        if title is not None:
+            payload['title'] = title
+        if description is not None:
+            payload['description'] = description
+        if summary is not None:
+            payload['summary'] = summary
+        if not payload:
+            raise QAgentError('patch_slideshow needs at least one field to update')
+
+        response = self._http.patch(
+            f'{self.base_url}/api/slideshow/{slideshow_id}/',
+            json=payload,
+            headers=_auth(write_token),
+        )
+        return SlideshowPatched.model_validate(self._parse(response, expected=200))
+
     def _parse(self, response: httpx.Response, *, expected: int) -> dict[str, Any]:
         '''Parse a JSON response and surface backend errors with their bodies.
 
@@ -127,3 +229,19 @@ def _resolve_image(path: str | os.PathLike[str]) -> Path:
     if not resolved.is_file():
         raise QAgentError(f'image path is not a file: {resolved}')
     return resolved
+
+
+def _guess_mime(path: Path) -> str:
+    '''Best-effort MIME type for the multipart upload.
+
+    Django + django-storages will sniff the body itself, so falling back
+    to application/octet-stream is safe; we set a real type when we can
+    so users see correct previews in places like image-aware logging.
+    '''
+    guessed, _ = mimetypes.guess_type(path.name)
+    return guessed or 'application/octet-stream'
+
+
+def _auth(write_token: str) -> dict[str, str]:
+    '''Bearer-token header. Centralized so the format stays consistent.'''
+    return {'Authorization': f'Bearer {write_token}'}
