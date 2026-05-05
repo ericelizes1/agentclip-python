@@ -1,0 +1,52 @@
+{
+  "$schema": "https://modelcontextprotocol.io/registry/server.schema.json",
+  "name": "agentclip",
+  "displayName": "AgentClip",
+  "description": "Capture your AI agent's QA runs as shareable clips. Returns a single URL with screenshots, captions, and a summary.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "homepage": "https://agentclip.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ericelizes/agentclip"
+  },
+  "author": {
+    "name": "Eric Elizes",
+    "email": "eric@elizes.dev"
+  },
+  "categories": ["browser-automation", "qa-testing", "agents"],
+  "keywords": ["mcp", "model-context-protocol", "qa", "testing", "screenshots", "agents", "claude"],
+  "runtime": {
+    "type": "stdio",
+    "command": "uvx",
+    "args": ["agentclip-mcp"]
+  },
+  "tools": [
+    {
+      "name": "slideshow_create",
+      "description": "Start a new slideshow. Returns id, share_url, and a write_token used to mutate this slideshow."
+    },
+    {
+      "name": "slideshow_add_slide",
+      "description": "Append a screenshot and caption to an existing slideshow."
+    },
+    {
+      "name": "slideshow_update_slide",
+      "description": "Replace the image and/or caption of a slide already in the slideshow."
+    },
+    {
+      "name": "slideshow_set_summary",
+      "description": "Set the slideshow's TL;DR. Call once near the end of a run."
+    }
+  ],
+  "configuration": {
+    "AGENTCLIP_BASE_URL": {
+      "description": "Base URL of the AgentClip backend. Defaults to https://agentclip.dev.",
+      "required": false
+    },
+    "AGENTCLIP_STATE_PATH": {
+      "description": "Path to the local write_token state file. Defaults to ~/.agentclip/state.json.",
+      "required": false
+    }
+  }
+}

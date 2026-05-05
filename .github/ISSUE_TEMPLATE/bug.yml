@@ -1,0 +1,54 @@
+name: Bug report
+description: Something doesn't work as expected.
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The fastest way to a fix
+        is a minimal repro: a few lines that, run on a fresh install, show
+        the failure.
+  - type: input
+    id: agentclip-version
+    attributes:
+      label: agentclip version
+      description: Output of `agentclip version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: Output of `python --version`.
+      placeholder: "3.12.3"
+    validations:
+      required: true
+  - type: input
+    id: agent-runtime
+    attributes:
+      label: Agent runtime (if relevant)
+      placeholder: "Claude Code 2.1, Cursor 0.49, etc."
+    validations:
+      required: false
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear, specific description. Paste tracebacks verbatim.
+    validations:
+      required: true
+  - type: textarea
+    id: minimal-repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest amount of code/config that reproduces the issue.
+      render: python
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: false
