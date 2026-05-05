@@ -14,13 +14,34 @@ import json
 import httpx
 import pytest
 
+import tempfile
+from pathlib import Path
+
 from agentclip.sdk import AgentClipClient, AgentClipError
+from agentclip.state import StateStore
 
 
-def make_client(handler) -> AgentClipClient:
-    '''Wire a AgentClipClient up to a MockTransport handler.'''
+def make_client(handler, state_store: StateStore | None = None) -> AgentClipClient:
+    '''Wire an AgentClipClient up to a MockTransport handler.
+
+    Tests get a per-call isolated StateStore by default so a real
+    ~/.agentclip/state.json on the developer's machine cannot bleed
+    a stored whoami into the request body and break wire-shape
+    assertions. Pass ``state_store=`` to inject a pre-configured one
+    (e.g., to test the whoami auto-application path).
+    '''
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    return AgentClipClient(base_url='https://agentclip.test', http_client=http)
+    if state_store is None:
+        # tempfile.mkdtemp because tmp_path is a pytest fixture and we
+        # want make_client usable from non-fixture contexts too. Each
+        # test gets its own throwaway directory; gc-cleanup is left
+        # to the OS, which is fine for the test workload.
+        state_store = StateStore(path=Path(tempfile.mkdtemp()) / 'state.json')
+    return AgentClipClient(
+        base_url='https://agentclip.test',
+        http_client=http,
+        state_store=state_store,
+    )
 
 
 # ---------- create_slideshow ----------
@@ -248,6 +269,98 @@ def test_base_url_trailing_slash_is_normalized():
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
     AgentClipClient(
-        base_url='https://agentclip.test/', http_client=http
+        base_url='https://agentclip.test/',
+        http_client=http,
+        state_store=StateStore(path=Path(tempfile.mkdtemp()) / 'state.json'),
     ).create_slideshow()
     assert captured['url'] == 'https://agentclip.test/api/slideshow/'
+
+
+# ---------- whoami auto-application ----------
+
+
+def _store_with_whoami(tmp_path, name='Eric Elizes', url='https://elizes.dev') -> StateStore:
+    '''Build a StateStore at tmp_path with whoami pre-set.'''
+    s = StateStore(path=tmp_path / 'state.json')
+    s.set_whoami(name, url)
+    return s
+
+
+def test_create_slideshow_auto_applies_whoami_when_set(tmp_path):
+    captured: dict = {}
+
+    def handler(request):
+        captured['body'] = json.loads(request.content)
+        return httpx.Response(
+            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
+        )
+
+    client = make_client(handler, state_store=_store_with_whoami(tmp_path))
+    client.create_slideshow(title='hello')
+
+    # The whoami values were merged into the request body without the
+    # caller having to pass them explicitly.
+    assert captured['body']['created_by'] == 'Eric Elizes'
+    assert captured['body']['created_by_url'] == 'https://elizes.dev'
+
+
+def test_create_slideshow_caller_overrides_stored_whoami(tmp_path):
+    captured: dict = {}
+
+    def handler(request):
+        captured['body'] = json.loads(request.content)
+        return httpx.Response(
+            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
+        )
+
+    client = make_client(handler, state_store=_store_with_whoami(tmp_path))
+    client.create_slideshow(
+        title='hello',
+        created_by='Override Name',
+        created_by_url='https://override.example',
+    )
+
+    # Caller arguments win over stored whoami.
+    assert captured['body']['created_by'] == 'Override Name'
+    assert captured['body']['created_by_url'] == 'https://override.example'
+
+
+def test_create_slideshow_omits_created_by_when_no_whoami(tmp_path):
+    '''Empty state store means the request body has no created_by fields.
+
+    Sending '' would persist as empty strings; omitting lets the backend
+    default to its own empty-string columns. Either works, but omitting
+    is cleaner on the wire.
+    '''
+    captured: dict = {}
+
+    def handler(request):
+        captured['body'] = json.loads(request.content)
+        return httpx.Response(
+            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
+        )
+
+    client = make_client(handler)  # default isolated, empty store
+    client.create_slideshow(title='hello')
+
+    assert 'created_by' not in captured['body']
+    assert 'created_by_url' not in captured['body']
+
+
+def test_create_slideshow_handles_whoami_with_no_url(tmp_path):
+    '''Name-only whoami sends created_by but omits created_by_url.'''
+    captured: dict = {}
+
+    def handler(request):
+        captured['body'] = json.loads(request.content)
+        return httpx.Response(
+            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
+        )
+
+    store = StateStore(path=tmp_path / 'state.json')
+    store.set_whoami('Eric Elizes')  # url omitted
+    client = make_client(handler, state_store=store)
+    client.create_slideshow(title='hello')
+
+    assert captured['body']['created_by'] == 'Eric Elizes'
+    assert 'created_by_url' not in captured['body']

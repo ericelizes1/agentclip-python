@@ -96,3 +96,68 @@ def test_state_file_perms_are_tightened(tmp_path):
     )
     mode = stat.S_IMODE(os.stat(path).st_mode)
     assert mode == 0o600
+
+
+# ---------- whoami ----------
+
+
+def test_whoami_set_and_get(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    store.set_whoami('Eric Elizes', 'https://elizes.dev')
+    assert store.get_whoami() == {'name': 'Eric Elizes', 'url': 'https://elizes.dev'}
+
+
+def test_whoami_get_when_never_set_returns_none(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    assert store.get_whoami() is None
+
+
+def test_whoami_clear_removes_entry(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    store.set_whoami('Eric', 'https://elizes.dev')
+    store.clear_whoami()
+    assert store.get_whoami() is None
+
+
+def test_whoami_set_without_url_stores_empty_string(tmp_path):
+    '''Name only, URL omitted: get_whoami returns name with empty url.'''
+    store = StateStore(path=tmp_path / 'state.json')
+    store.set_whoami('Eric')
+    assert store.get_whoami() == {'name': 'Eric', 'url': ''}
+
+
+def test_whoami_coexists_with_slideshows(tmp_path):
+    '''Setting whoami must not clobber the slideshows map and vice versa.'''
+    store = StateStore(path=tmp_path / 'state.json')
+    store.remember('ss_x', write_token='wt', share_url='https://q.example/s/x')
+    store.set_whoami('Eric', 'https://elizes.dev')
+
+    assert store.get_token('ss_x') == 'wt'
+    assert store.get_whoami()['name'] == 'Eric'
+
+    store.clear_whoami()
+    assert store.get_token('ss_x') == 'wt'  # tokens still intact
+
+
+def test_whoami_corrupt_state_returns_none(tmp_path):
+    '''Same recovery shape as get_token: corrupt JSON treated as empty.'''
+    path = tmp_path / 'state.json'
+    path.write_text('{this is not valid json')
+    store = StateStore(path=path)
+    assert store.get_whoami() is None
+
+
+# ---------- one-time flags (used by the CLI's first-create nudge) ----------
+
+
+def test_flag_default_is_false(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    assert store.get_flag('any_flag_name') is False
+
+
+def test_flag_set_then_get(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    store.set_flag('credit_nudge_shown')
+    assert store.get_flag('credit_nudge_shown') is True
+    # Other flags remain unset.
+    assert store.get_flag('other_flag') is False

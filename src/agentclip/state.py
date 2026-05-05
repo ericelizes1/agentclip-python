@@ -116,3 +116,46 @@ class StateStore:
 
     def all_slideshows(self) -> dict[str, dict]:
         return dict(self._read().get('slideshows', {}))
+
+    # ----- whoami: optional creator credit applied to every new clip -----
+
+    def get_whoami(self) -> dict | None:
+        '''Return the stored creator credit, or None if not set.
+
+        Shape: ``{'name': str, 'url': str}``. ``url`` may be empty when the
+        user set a name but no URL; the SDK passes empty strings through
+        unchanged so the backend does its own URL validation.
+        '''
+        data = self._read().get('whoami')
+        if not data or not data.get('name'):
+            return None
+        return {'name': data['name'], 'url': data.get('url', '')}
+
+    def set_whoami(self, name: str, url: str | None = None) -> None:
+        '''Store the creator credit. Overwrites any prior entry.'''
+        data = self._read()
+        data['whoami'] = {'name': name, 'url': url or ''}
+        self._write(data)
+
+    def clear_whoami(self) -> None:
+        '''Remove the creator credit. No-op if none was set.'''
+        data = self._read()
+        if 'whoami' in data:
+            del data['whoami']
+            self._write(data)
+
+    # ----- nudge flags: one-time CLI hints -----
+
+    def get_flag(self, key: str) -> bool:
+        '''Return True if a one-time CLI flag has been raised.
+
+        Used by the CLI's first-create nudge to fire the credit-yourself
+        tip exactly once per machine. Never errors when the key is absent.
+        '''
+        return bool(self._read().get('flags', {}).get(key))
+
+    def set_flag(self, key: str) -> None:
+        '''Raise a one-time CLI flag.'''
+        data = self._read()
+        data.setdefault('flags', {})[key] = True
+        self._write(data)

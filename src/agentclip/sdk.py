@@ -24,6 +24,7 @@ from typing import Any
 import httpx
 
 from ._models import SlideAdded, SlideshowCreated, SlideshowPatched, SlideUpdated
+from .state import StateStore
 
 DEFAULT_BASE_URL = 'https://agentclip.dev'
 '''Public hosted backend. Override with AGENTCLIP_BASE_URL or base_url=.'''
@@ -57,11 +58,16 @@ class AgentClipClient:
         *,
         timeout: float = 30.0,
         http_client: httpx.Client | None = None,
+        state_store: StateStore | None = None,
     ):
         resolved = base_url or os.environ.get('AGENTCLIP_BASE_URL') or DEFAULT_BASE_URL
         self.base_url = resolved.rstrip('/')
         self._owns_client = http_client is None
         self._http = http_client or httpx.Client(timeout=timeout)
+        # state_store is the seam for whoami auto-application. The default
+        # uses the real filesystem path; tests inject a stub pointed at
+        # tmp_path so they never touch ~/.agentclip/.
+        self._state = state_store if state_store is not None else StateStore()
 
     def __enter__(self) -> 'AgentClipClient':
         return self
@@ -78,17 +84,41 @@ class AgentClipClient:
         *,
         title: str | None = None,
         description: str | None = None,
+        created_by: str | None = None,
+        created_by_url: str | None = None,
     ) -> SlideshowCreated:
         '''Create a new slideshow. Returns the id, share URL, and write token.
 
         The write token is the only credential that authorizes future
         mutations on this slideshow. Lose it and the slideshow is frozen.
+
+        Creator credit (``created_by``, ``created_by_url``):
+        - When passed explicitly, the call-site values win.
+        - When not passed, the SDK reads ``StateStore.get_whoami()`` and
+          fills both fields from there. This is how every clip an agent
+          posts gets credited automatically once the user has run
+          ``agentclip whoami --set ...`` once on their machine.
+        - When neither is passed and no whoami is stored, the fields are
+          omitted from the request body so the backend stores empty
+          strings (not nulls).
         '''
         payload: dict[str, Any] = {}
         if title is not None:
             payload['title'] = title
         if description is not None:
             payload['description'] = description
+
+        # Auto-apply the local whoami credit when the caller didn't override.
+        if created_by is None and created_by_url is None:
+            stored = self._state.get_whoami()
+            if stored is not None:
+                created_by = stored['name']
+                created_by_url = stored['url'] or None
+
+        if created_by is not None:
+            payload['created_by'] = created_by
+        if created_by_url is not None:
+            payload['created_by_url'] = created_by_url
 
         response = self._http.post(f'{self.base_url}/api/slideshow/', json=payload)
         return SlideshowCreated.model_validate(self._parse(response, expected=201))
