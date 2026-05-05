@@ -1,15 +1,15 @@
 '''Real implementation of the qagent client surface.
 
 The SDK is the source of truth. The CLI and MCP server are thin wrappers
-on top — anything they can do, you can do by importing this module.
+on top; anything they can do, you can do by importing this module.
 
 Design notes:
 - Synchronous httpx, not async. Agent runtimes call us one tool at a time
   and pay the round-trip serially anyway. Async would buy nothing and
   complicate every call site.
 - write_token is captured at create() and re-sent on every mutation. We
-  do not stash it inside this object — the caller (CLI, MCP, library
-  user) decides where to persist it. See state.py for the default.
+  do not stash it inside this object. The caller (CLI, MCP, library user)
+  decides where to persist it. See state.py for the default.
 - We never raise on 4xx without context. httpx's raise_for_status() loses
   the response body, which is exactly the part the user needs.
 '''
@@ -129,8 +129,8 @@ class QAgentClient:
     ) -> SlideUpdated:
         '''Replace fields on an existing slide. Image, caption, or both.
 
-        At least one of ``image_path`` and ``caption`` must be provided —
-        a no-op PATCH would silently succeed and waste a round-trip.
+        At least one of ``image_path`` and ``caption`` must be provided.
+        A no-op PATCH would silently succeed and waste a round-trip.
         '''
         if image_path is None and caption is None:
             raise QAgentError('update_slide requires image_path and/or caption')
@@ -147,7 +147,7 @@ class QAgentClient:
                 files = {'image': (image.name, fh, _guess_mime(image))}
                 response = self._http.patch(url, files=files, data=data, headers=headers)
         else:
-            # No image, no multipart needed — simpler JSON keeps the request
+            # No image, no multipart needed. Simpler JSON keeps the request
             # debuggable in curl and matches Django's PATCH expectations.
             response = self._http.patch(url, json=data, headers=headers)
 

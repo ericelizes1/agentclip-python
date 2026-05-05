@@ -2,7 +2,7 @@
 
 Mirrors the MCP tool surface for humans, CI, and any agent runtime
 that doesn't speak MCP yet. Every command is a thin wrapper over
-QAgentClient — same logic, same error envelopes — so behavior never
+QAgentClient (same logic, same error envelopes) so behavior never
 diverges between an agent calling slideshow_create and a developer
 running ``qagent slideshow create``.
 
@@ -52,8 +52,8 @@ def _print(payload: dict, *, as_json: bool, summary: str | None = None) -> None:
 def _bail(message: str, *, body: str | None = None) -> 'typer.Exit':
     '''Print a real error to stderr and exit non-zero.
 
-    Returned (not raised) so call sites read as ``raise _bail(...)`` —
-    that pattern lets type-checkers see the control-flow exit.
+    Returned (not raised) so call sites read as ``raise _bail(...)``,
+    a pattern that lets type-checkers see the control-flow exit.
     '''
     typer.echo(f'qagent: {message}', err=True)
     if body:
@@ -222,15 +222,15 @@ def install_skill(
         False, '--force', help='Overwrite an existing SKILL.md without prompting.'
     ),
 ) -> None:
-    '''Install the qagent Claude skill so agents pick up the prompt guidance.
+    '''Install the bundled qagent skill so agents pick up the prompt guidance.
 
-    The skill is what makes generated slideshows actually good — it teaches
+    The skill is what makes generated slideshows actually good. It teaches
     the agent when to screenshot, how to caption, and how to write the
     summary. Reinstall after upgrading the package to pull in updates.
     '''
     skill_source = resources.files('qagent.skill').joinpath('SKILL.md')
     if not skill_source.is_file():
-        raise _bail('SKILL.md not bundled with this install — open a github issue.')
+        raise _bail('SKILL.md not bundled with this install. Open a github issue.')
 
     target.mkdir(parents=True, exist_ok=True)
     dest = target / 'SKILL.md'

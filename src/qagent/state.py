@@ -66,7 +66,7 @@ class StateStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # NamedTemporaryFile + os.replace is the standard atomic write
         # pattern: rename is atomic on POSIX, so the file either has the
-        # old contents or the new contents — never half of each.
+        # old contents or the new contents, never half of each.
         with tempfile.NamedTemporaryFile(
             mode='w',
             dir=self.path.parent,
@@ -79,7 +79,7 @@ class StateStore:
             os.fsync(tmp.fileno())
             tmp_path = tmp.name
         os.replace(tmp_path, self.path)
-        # Tighten perms — write_tokens are credentials.
+        # Tighten perms; write_tokens are credentials.
         try:
             os.chmod(self.path, 0o600)
         except OSError:

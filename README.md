@@ -2,10 +2,11 @@
 
 Turn AI agent QA runs into shareable slideshows.
 
-QAgent is an MCP server, CLI, and Claude Code skill. You ask your local AI agent
-to QA a web app. The agent drives the browser (via its existing tools), takes
-screenshots at meaningful moments, writes captions, and uploads everything as a
-**slideshow** — a single shareable URL anyone can watch.
+QAgent is an MCP server, a CLI, and a bundled agent skill. You ask your
+local AI agent to QA a web app. The agent drives the browser (via its
+existing tools), takes screenshots at meaningful moments, writes captions,
+and uploads everything as a **slideshow**, a single shareable URL anyone
+can watch.
 
 The product is the artifact (the slideshow URL) plus the prompt engineering
 (the skill) that makes agent-generated runs actually good.
@@ -25,10 +26,10 @@ uvx qagent --help
 ## 60-second example
 
 ```bash
-# In Claude Code, after installing the skill:
+# Install the bundled skill into your agent runtime:
 qagent install-skill
 
-# Then ask the agent: "QA the signup flow on localhost:3000 and post a slideshow."
+# Then ask your agent: "QA the signup flow on localhost:3000 and post a slideshow."
 # The agent calls slideshow_create, takes screenshots, calls slideshow_add_slide
 # after each meaningful step, then slideshow_set_summary at the end. You get
 # back a share URL.
@@ -36,11 +37,11 @@ qagent install-skill
 
 ## Layout
 
-- `src/qagent/sdk.py` — real implementation, sync HTTP client over `httpx`
-- `src/qagent/cli.py` — `qagent ...` Typer CLI, thin wrapper over the SDK
-- `src/qagent/mcp_server.py` — MCP server registering 4 tools, thin wrapper over the SDK
-- `src/qagent/state.py` — `~/.qagent/state.json` write_token persistence
-- `src/qagent/skill/SKILL.md` — the Claude skill, installed to `~/.claude/skills/qagent/`
+- `src/qagent/sdk.py`: real implementation, sync HTTP client over `httpx`
+- `src/qagent/cli.py`: `qagent ...` Typer CLI, thin wrapper over the SDK
+- `src/qagent/mcp_server.py`: MCP server registering 4 tools, thin wrapper over the SDK
+- `src/qagent/state.py`: `~/.qagent/state.json` write_token persistence
+- `src/qagent/skill/SKILL.md`: the bundled agent skill, installed to `~/.claude/skills/qagent/` by default
 
 ## Tools (MCP + CLI mirror)
 

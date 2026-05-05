@@ -1,4 +1,4 @@
-'''MCP server exposing qagent tools to Claude Code, Cursor, and friends.
+'''MCP server exposing qagent tools to any agent runtime that speaks MCP.
 
 This module is deliberately thin: every tool is a one-screen wrapper
 that calls into the SDK and persists any returned credentials via the
@@ -10,7 +10,7 @@ Run with::
     qagent-mcp           # via the console script
     python -m qagent.mcp_server   # equivalent
 
-It speaks stdio MCP — the only transport every agent runtime supports
+It speaks stdio MCP, the only transport every agent runtime supports
 today. SSE/HTTP transports can come later if a deployment needs them.
 '''
 
@@ -148,7 +148,7 @@ def slideshow_update_slide(
 ) -> dict:
     '''Replace the image and/or caption of an existing slide.
 
-    Prefer this over piling up corrected slides — see SKILL.md.
+    Prefer this over piling up corrected slides; see SKILL.md.
     '''
     write_token = _resolve_token(slideshow_id)
     client = QAgentClient()
@@ -200,7 +200,7 @@ def _resolve_token(slideshow_id: str) -> str:
 
     Surfaced as its own helper because every mutation tool needs the same
     "no token? give the user a real error" treatment, and the agent reads
-    that error message verbatim — so it has to be useful, not a traceback.
+    that error message verbatim, so it has to be useful, not a traceback.
     '''
     token = StateStore().get_token(slideshow_id)
     if token is None:
