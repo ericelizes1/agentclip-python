@@ -141,6 +141,21 @@ Example:
 Do not include praise, hedging, or apologies. The summary is read by
 someone who has 10 seconds. Make those seconds count.
 
+## Crediting the run
+
+Every clip can carry an optional creator credit ("Filed by Eric Elizes")
+that links to the creator's portfolio. The credit is set once on the
+user's machine via `agentclip whoami --set "Your Name" --url URL` and
+applied automatically to every future clip.
+
+If the user mentions sharing this clip externally (in a recruiter
+message, a public Slack, a PR description) and they have not set up
+whoami yet, suggest it once. Do not push for casual internal QA where
+attribution adds nothing.
+
+You do not need to ask before every clip. The auto-application means
+the credit just appears on every clip the user creates from then on.
+
 ## Anti-patterns to avoid
 
 - **Narrating yourself.** "I will now navigate to the login page." Captions
