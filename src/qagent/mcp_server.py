@@ -80,6 +80,138 @@ def slideshow_create(
     }
 
 
+@mcp.tool()
+def slideshow_add_slide(
+    slideshow_id: Annotated[
+        str,
+        Field(description='ID returned by slideshow_create.'),
+    ],
+    image_path: Annotated[
+        str,
+        Field(
+            description=(
+                'Absolute path on the local filesystem to the screenshot. '
+                'PNG or JPEG. The agent should save the screenshot to disk '
+                'before calling this tool.'
+            )
+        ),
+    ],
+    caption: Annotated[
+        str,
+        Field(
+            description=(
+                'One- or two-sentence caption. Active voice: action + '
+                'expectation + result. See SKILL.md for examples.'
+            )
+        ),
+    ],
+) -> dict:
+    '''Append a screenshot + caption as the next slide in the slideshow.'''
+    write_token = _resolve_token(slideshow_id)
+    client = QAgentClient()
+    try:
+        result = client.add_slide(
+            slideshow_id,
+            image_path=image_path,
+            caption=caption,
+            write_token=write_token,
+        )
+    finally:
+        client.close()
+    return result.model_dump()
+
+
+@mcp.tool()
+def slideshow_update_slide(
+    slideshow_id: Annotated[
+        str,
+        Field(description='ID returned by slideshow_create.'),
+    ],
+    slide_position: Annotated[
+        int,
+        Field(description='1-based position of the slide to update.'),
+    ],
+    image_path: Annotated[
+        str | None,
+        Field(
+            description=(
+                'New screenshot path. Omit to leave the existing image in place.'
+            )
+        ),
+    ] = None,
+    caption: Annotated[
+        str | None,
+        Field(
+            description='New caption. Omit to leave the existing caption in place.',
+        ),
+    ] = None,
+) -> dict:
+    '''Replace the image and/or caption of an existing slide.
+
+    Prefer this over piling up corrected slides — see SKILL.md.
+    '''
+    write_token = _resolve_token(slideshow_id)
+    client = QAgentClient()
+    try:
+        result = client.update_slide(
+            slideshow_id,
+            slide_position,
+            image_path=image_path,
+            caption=caption,
+            write_token=write_token,
+        )
+    finally:
+        client.close()
+    return result.model_dump()
+
+
+@mcp.tool()
+def slideshow_set_summary(
+    slideshow_id: Annotated[
+        str,
+        Field(description='ID returned by slideshow_create.'),
+    ],
+    summary: Annotated[
+        str,
+        Field(
+            description=(
+                'TL;DR of the QA run. Aim for under 80 words: outcome, '
+                'counts (passes/fails), bug list if any. Set near end of run.'
+            )
+        ),
+    ],
+) -> dict:
+    '''Set the slideshow summary. Call once near the end of the run.'''
+    write_token = _resolve_token(slideshow_id)
+    client = QAgentClient()
+    try:
+        result = client.set_summary(
+            slideshow_id,
+            summary=summary,
+            write_token=write_token,
+        )
+    finally:
+        client.close()
+    return result.model_dump()
+
+
+def _resolve_token(slideshow_id: str) -> str:
+    '''Look up the write_token for ``slideshow_id`` from the local state file.
+
+    Surfaced as its own helper because every mutation tool needs the same
+    "no token? give the user a real error" treatment, and the agent reads
+    that error message verbatim — so it has to be useful, not a traceback.
+    '''
+    token = StateStore().get_token(slideshow_id)
+    if token is None:
+        raise ValueError(
+            f'no write_token cached locally for slideshow {slideshow_id!r}. '
+            'Was this slideshow created on a different machine? '
+            'Set QAGENT_WRITE_TOKEN_<id> in env or use the CLI to import it.'
+        )
+    return token
+
+
 def main() -> None:
     '''Entry point for the ``qagent-mcp`` console script.'''
     mcp.run()
