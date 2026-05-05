@@ -1,6 +1,6 @@
 '''Tests for the local write_token state store.
 
-Uses tmp_path so each test gets an isolated directory; QAGENT_STATE_PATH
+Uses tmp_path so each test gets an isolated directory; AGENTCLIP_STATE_PATH
 is not used here because constructing StateStore(path=...) directly is
 clearer in test code.
 '''
@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from qagent.state import StateStore
+from agentclip.state import StateStore
 
 
 def test_remember_and_get_token(tmp_path):

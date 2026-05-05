@@ -3,7 +3,7 @@ requires = ['hatchling']
 build-backend = 'hatchling.build'
 
 [project]
-name = 'qagent'
+name = 'agentclip'
 version = '0.1.0'
 description = 'Turn AI agent QA runs into shareable slideshows.'
 readme = 'README.md'
@@ -34,16 +34,16 @@ dev = [
 ]
 
 [project.scripts]
-qagent = 'qagent.cli:app'
-qagent-mcp = 'qagent.mcp_server:main'
+agentclip = 'agentclip.cli:app'
+agentclip-mcp = 'agentclip.mcp_server:main'
 
 [project.urls]
-Homepage = 'https://github.com/ericelizes/qagent'
-Repository = 'https://github.com/ericelizes/qagent'
-Issues = 'https://github.com/ericelizes/qagent/issues'
+Homepage = 'https://github.com/ericelizes/agentclip'
+Repository = 'https://github.com/ericelizes/agentclip'
+Issues = 'https://github.com/ericelizes/agentclip/issues'
 
 [tool.hatch.build.targets.wheel]
-packages = ['src/qagent']
+packages = ['src/agentclip']
 
 [tool.ruff]
 line-length = 100

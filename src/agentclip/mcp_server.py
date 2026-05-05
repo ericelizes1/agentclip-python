@@ -1,4 +1,4 @@
-'''MCP server exposing qagent tools to any agent runtime that speaks MCP.
+'''MCP server exposing agentclip tools to any agent runtime that speaks MCP.
 
 This module is deliberately thin: every tool is a one-screen wrapper
 that calls into the SDK and persists any returned credentials via the
@@ -7,8 +7,8 @@ the same behavior without duplication.
 
 Run with::
 
-    qagent-mcp           # via the console script
-    python -m qagent.mcp_server   # equivalent
+    agentclip-mcp           # via the console script
+    python -m agentclip.mcp_server   # equivalent
 
 It speaks stdio MCP, the only transport every agent runtime supports
 today. SSE/HTTP transports can come later if a deployment needs them.
@@ -21,13 +21,13 @@ from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from .sdk import QAgentClient
+from .sdk import AgentClipClient
 from .state import StateStore
 
-mcp = FastMCP('qagent')
+mcp = FastMCP('agentclip')
 '''The single FastMCP instance for this server.
 
-Imported by tests and by the ``qagent-mcp`` console script. Tools are
+Imported by tests and by the ``agentclip-mcp`` console script. Tools are
 registered at import time via the @mcp.tool decorators below, which
 keeps the server definition self-contained in this one module.
 '''
@@ -60,7 +60,7 @@ def slideshow_create(
     slideshow_update_slide, slideshow_set_summary) will pick it up
     automatically when given the returned slideshow id.
     '''
-    client = QAgentClient()
+    client = AgentClipClient()
     try:
         result = client.create_slideshow(title=title, description=description)
     finally:
@@ -108,7 +108,7 @@ def slideshow_add_slide(
 ) -> dict:
     '''Append a screenshot + caption as the next slide in the slideshow.'''
     write_token = _resolve_token(slideshow_id)
-    client = QAgentClient()
+    client = AgentClipClient()
     try:
         result = client.add_slide(
             slideshow_id,
@@ -151,7 +151,7 @@ def slideshow_update_slide(
     Prefer this over piling up corrected slides; see SKILL.md.
     '''
     write_token = _resolve_token(slideshow_id)
-    client = QAgentClient()
+    client = AgentClipClient()
     try:
         result = client.update_slide(
             slideshow_id,
@@ -183,7 +183,7 @@ def slideshow_set_summary(
 ) -> dict:
     '''Set the slideshow summary. Call once near the end of the run.'''
     write_token = _resolve_token(slideshow_id)
-    client = QAgentClient()
+    client = AgentClipClient()
     try:
         result = client.set_summary(
             slideshow_id,
@@ -207,13 +207,13 @@ def _resolve_token(slideshow_id: str) -> str:
         raise ValueError(
             f'no write_token cached locally for slideshow {slideshow_id!r}. '
             'Was this slideshow created on a different machine? '
-            'Set QAGENT_WRITE_TOKEN_<id> in env or use the CLI to import it.'
+            'Set AGENTCLIP_WRITE_TOKEN_<id> in env or use the CLI to import it.'
         )
     return token
 
 
 def main() -> None:
-    '''Entry point for the ``qagent-mcp`` console script.'''
+    '''Entry point for the ``agentclip-mcp`` console script.'''
     mcp.run()
 
 

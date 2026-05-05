@@ -1,4 +1,4 @@
-'''Real implementation of the qagent client surface.
+'''Real implementation of the agentclip client surface.
 
 The SDK is the source of truth. The CLI and MCP server are thin wrappers
 on top; anything they can do, you can do by importing this module.
@@ -25,11 +25,11 @@ import httpx
 
 from ._models import SlideAdded, SlideshowCreated, SlideshowPatched, SlideUpdated
 
-DEFAULT_BASE_URL = 'https://qagent.app'
-'''Public hosted backend. Override with QAGENT_BASE_URL or base_url=.'''
+DEFAULT_BASE_URL = 'https://agentclip.dev'
+'''Public hosted backend. Override with AGENTCLIP_BASE_URL or base_url=.'''
 
 
-class QAgentError(Exception):
+class AgentClipError(Exception):
     '''Base class for SDK errors. Carries the HTTP response body when present.'''
 
     def __init__(self, message: str, *, status_code: int | None = None, body: str | None = None):
@@ -38,12 +38,12 @@ class QAgentError(Exception):
         self.body = body
 
 
-class QAgentClient:
-    '''HTTP client for the qagent backend.
+class AgentClipClient:
+    '''HTTP client for the agentclip backend.
 
     Typical usage::
 
-        client = QAgentClient()
+        client = AgentClipClient()
         result = client.create_slideshow(title='Signup flow QA')
         # result.write_token is now the only way to mutate this slideshow
 
@@ -58,12 +58,12 @@ class QAgentClient:
         timeout: float = 30.0,
         http_client: httpx.Client | None = None,
     ):
-        resolved = base_url or os.environ.get('QAGENT_BASE_URL') or DEFAULT_BASE_URL
+        resolved = base_url or os.environ.get('AGENTCLIP_BASE_URL') or DEFAULT_BASE_URL
         self.base_url = resolved.rstrip('/')
         self._owns_client = http_client is None
         self._http = http_client or httpx.Client(timeout=timeout)
 
-    def __enter__(self) -> 'QAgentClient':
+    def __enter__(self) -> 'AgentClipClient':
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -133,7 +133,7 @@ class QAgentClient:
         A no-op PATCH would silently succeed and waste a round-trip.
         '''
         if image_path is None and caption is None:
-            raise QAgentError('update_slide requires image_path and/or caption')
+            raise AgentClipError('update_slide requires image_path and/or caption')
 
         url = f'{self.base_url}/api/slideshow/{slideshow_id}/slides/{slide_position}/'
         headers = _auth(write_token)
@@ -185,7 +185,7 @@ class QAgentClient:
         if summary is not None:
             payload['summary'] = summary
         if not payload:
-            raise QAgentError('patch_slideshow needs at least one field to update')
+            raise AgentClipError('patch_slideshow needs at least one field to update')
 
         response = self._http.patch(
             f'{self.base_url}/api/slideshow/{slideshow_id}/',
@@ -198,20 +198,20 @@ class QAgentClient:
         '''Parse a JSON response and surface backend errors with their bodies.
 
         The hosted backend returns JSON error envelopes; we re-raise them
-        as QAgentError so callers can show the user something useful
+        as AgentClipError so callers can show the user something useful
         instead of a stripped-down "HTTP 400" with no detail.
         '''
         if response.status_code != expected:
-            raise QAgentError(
-                f'qagent backend returned {response.status_code} (expected {expected})',
+            raise AgentClipError(
+                f'agentclip backend returned {response.status_code} (expected {expected})',
                 status_code=response.status_code,
                 body=response.text,
             )
         try:
             return response.json()
         except ValueError as exc:
-            raise QAgentError(
-                'qagent backend returned non-JSON response',
+            raise AgentClipError(
+                'agentclip backend returned non-JSON response',
                 status_code=response.status_code,
                 body=response.text,
             ) from exc
@@ -225,9 +225,9 @@ def _resolve_image(path: str | os.PathLike[str]) -> Path:
     '''
     resolved = Path(path).expanduser().resolve()
     if not resolved.exists():
-        raise QAgentError(f'image not found: {resolved}')
+        raise AgentClipError(f'image not found: {resolved}')
     if not resolved.is_file():
-        raise QAgentError(f'image path is not a file: {resolved}')
+        raise AgentClipError(f'image path is not a file: {resolved}')
     return resolved
 
 

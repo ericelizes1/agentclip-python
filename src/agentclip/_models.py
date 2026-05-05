@@ -1,4 +1,4 @@
-'''Wire-format models for talking to the qagent backend.
+'''Wire-format models for talking to the agentclip backend.
 
 Kept separate from the public SDK surface so we can evolve transport
 shapes (multipart vs JSON, field renames the backend may do) without

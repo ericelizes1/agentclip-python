@@ -29,4 +29,4 @@ htmlcov/
 .DS_Store
 
 # Local agent state (when developing against real backend)
-.qagent-dev/
+.agentclip-dev/

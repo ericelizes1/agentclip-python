@@ -5,8 +5,8 @@ the caller can present its write_token. That means losing the token
 silently freezes the slideshow forever, so we cache it locally the
 moment it's issued.
 
-Default location is ``~/.qagent/state.json``. Override with
-``QAGENT_STATE_PATH`` for tests or ephemeral environments.
+Default location is ``~/.agentclip/state.json``. Override with
+``AGENTCLIP_STATE_PATH`` for tests or ephemeral environments.
 
 Format::
 
@@ -32,11 +32,11 @@ from pathlib import Path
 
 
 def default_state_path() -> Path:
-    '''Resolve the state file path, honoring QAGENT_STATE_PATH when set.'''
-    override = os.environ.get('QAGENT_STATE_PATH')
+    '''Resolve the state file path, honoring AGENTCLIP_STATE_PATH when set.'''
+    override = os.environ.get('AGENTCLIP_STATE_PATH')
     if override:
         return Path(override).expanduser()
-    return Path.home() / '.qagent' / 'state.json'
+    return Path.home() / '.agentclip' / 'state.json'
 
 
 class StateStore:

@@ -1,9 +1,9 @@
 ---
-name: qagent
+name: agentclip
 description: Publish a QA slideshow of your work. Use after driving a browser through a feature, bug repro, or onboarding flow whose result the user wants to see at a glance. Triggers on "QA this", "post a slideshow of what you did", "show me what happened", "share a run of X", or whenever your work produces visual evidence worth keeping. Output is a shareable URL with screenshots, captions, and a summary.
 ---
 
-# qagent
+# agentclip
 
 You drove a browser. The user wants the receipts. Turn what you did into a
 shareable slideshow URL using the four `slideshow_*` tools.

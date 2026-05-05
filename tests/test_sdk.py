@@ -1,4 +1,4 @@
-'''Tests for QAgentClient using httpx.MockTransport.
+'''Tests for AgentClipClient using httpx.MockTransport.
 
 We inject a MockTransport via the http_client= parameter to exercise
 real request shapes without hitting a network. Each test asserts both
@@ -14,13 +14,13 @@ import json
 import httpx
 import pytest
 
-from qagent.sdk import QAgentClient, QAgentError
+from agentclip.sdk import AgentClipClient, AgentClipError
 
 
-def make_client(handler) -> QAgentClient:
-    '''Wire a QAgentClient up to a MockTransport handler.'''
+def make_client(handler) -> AgentClipClient:
+    '''Wire a AgentClipClient up to a MockTransport handler.'''
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    return QAgentClient(base_url='https://qagent.test', http_client=http)
+    return AgentClipClient(base_url='https://agentclip.test', http_client=http)
 
 
 # ---------- create_slideshow ----------
@@ -37,7 +37,7 @@ def test_create_slideshow_posts_json_body():
             201,
             json={
                 'id': 'ss_1',
-                'share_url': 'https://qagent.test/s/abc',
+                'share_url': 'https://agentclip.test/s/abc',
                 'write_token': 'wt_secret',
             },
         )
@@ -46,7 +46,7 @@ def test_create_slideshow_posts_json_body():
     result = client.create_slideshow(title='hello', description='testing')
 
     assert captured['method'] == 'POST'
-    assert captured['url'] == 'https://qagent.test/api/slideshow/'
+    assert captured['url'] == 'https://agentclip.test/api/slideshow/'
     assert captured['body'] == {'title': 'hello', 'description': 'testing'}
     assert result.id == 'ss_1'
     assert result.write_token == 'wt_secret'
@@ -70,7 +70,7 @@ def test_create_slideshow_raises_on_non_201_with_body():
     def handler(request):
         return httpx.Response(429, text='rate limited')
 
-    with pytest.raises(QAgentError) as exc:
+    with pytest.raises(AgentClipError) as exc:
         make_client(handler).create_slideshow()
     assert exc.value.status_code == 429
     assert exc.value.body == 'rate limited'
@@ -107,7 +107,7 @@ def test_add_slide_sends_multipart_with_auth(tmp_path):
     )
 
     assert captured['method'] == 'POST'
-    assert captured['url'] == 'https://qagent.test/api/slideshow/ss_x/slides/'
+    assert captured['url'] == 'https://agentclip.test/api/slideshow/ss_x/slides/'
     assert captured['auth'] == 'Bearer wt_secret'
     assert captured['content_type'].startswith('multipart/form-data')
     # Body should contain both the caption text and the file bytes
@@ -118,7 +118,7 @@ def test_add_slide_sends_multipart_with_auth(tmp_path):
 
 def test_add_slide_rejects_missing_image(tmp_path):
     client = make_client(lambda r: httpx.Response(500))
-    with pytest.raises(QAgentError, match='image not found'):
+    with pytest.raises(AgentClipError, match='image not found'):
         client.add_slide(
             'ss_x',
             image_path=tmp_path / 'does-not-exist.png',
@@ -186,7 +186,7 @@ def test_update_slide_with_image_sends_multipart(tmp_path):
 
 def test_update_slide_no_args_raises():
     client = make_client(lambda r: httpx.Response(500))
-    with pytest.raises(QAgentError, match='requires image_path and/or caption'):
+    with pytest.raises(AgentClipError, match='requires image_path and/or caption'):
         client.update_slide('ss_x', 1, write_token='wt')
 
 
@@ -211,14 +211,14 @@ def test_set_summary_patches_slideshow_with_auth():
     )
 
     assert captured['method'] == 'PATCH'
-    assert captured['url'] == 'https://qagent.test/api/slideshow/ss_x/'
+    assert captured['url'] == 'https://agentclip.test/api/slideshow/ss_x/'
     assert captured['auth'] == 'Bearer wt_secret'
     assert captured['body'] == {'summary': 'wrap'}
     assert result.summary == 'wrap'
 
 
 def test_patch_slideshow_no_fields_raises():
-    with pytest.raises(QAgentError, match='at least one field'):
+    with pytest.raises(AgentClipError, match='at least one field'):
         make_client(lambda r: httpx.Response(500)).patch_slideshow(
             'ss_x', write_token='wt'
         )
@@ -231,7 +231,7 @@ def test_non_json_response_surfaces_body():
     def handler(request):
         return httpx.Response(500, text='<html>boom</html>')
 
-    with pytest.raises(QAgentError) as exc:
+    with pytest.raises(AgentClipError) as exc:
         make_client(handler).create_slideshow()
     assert exc.value.status_code == 500
     assert '<html>boom</html>' in (exc.value.body or '')
@@ -247,7 +247,7 @@ def test_base_url_trailing_slash_is_normalized():
         )
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    QAgentClient(
-        base_url='https://qagent.test/', http_client=http
+    AgentClipClient(
+        base_url='https://agentclip.test/', http_client=http
     ).create_slideshow()
-    assert captured['url'] == 'https://qagent.test/api/slideshow/'
+    assert captured['url'] == 'https://agentclip.test/api/slideshow/'

@@ -1,14 +1,14 @@
-'''The ``qagent`` Typer CLI.
+'''The ``agentclip`` Typer CLI.
 
 Mirrors the MCP tool surface for humans, CI, and any agent runtime
 that doesn't speak MCP yet. Every command is a thin wrapper over
-QAgentClient (same logic, same error envelopes) so behavior never
+AgentClipClient (same logic, same error envelopes) so behavior never
 diverges between an agent calling slideshow_create and a developer
-running ``qagent slideshow create``.
+running ``agentclip slideshow create``.
 
 Two non-tool commands round it out:
-- ``qagent install-skill`` writes SKILL.md to ``~/.claude/skills/qagent/``.
-- ``qagent slideshow list`` shows what's cached locally (tokens stay hidden).
+- ``agentclip install-skill`` writes SKILL.md to ``~/.claude/skills/agentclip/``.
+- ``agentclip slideshow list`` shows what's cached locally (tokens stay hidden).
 
 Output goes to stdout as JSON when --json is passed, otherwise as a
 short human-readable summary. Agents that want to parse output should
@@ -26,11 +26,11 @@ from pathlib import Path
 import typer
 
 from . import __version__
-from .sdk import QAgentClient, QAgentError
+from .sdk import AgentClipClient, AgentClipError
 from .state import StateStore
 
 app = typer.Typer(
-    name='qagent',
+    name='agentclip',
     help='Turn AI agent QA runs into shareable slideshows.',
     no_args_is_help=True,
     add_completion=False,
@@ -55,7 +55,7 @@ def _bail(message: str, *, body: str | None = None) -> 'typer.Exit':
     Returned (not raised) so call sites read as ``raise _bail(...)``,
     a pattern that lets type-checkers see the control-flow exit.
     '''
-    typer.echo(f'qagent: {message}', err=True)
+    typer.echo(f'agentclip: {message}', err=True)
     if body:
         typer.echo(body, err=True)
     return typer.Exit(code=1)
@@ -74,9 +74,9 @@ def slideshow_create(
 ) -> None:
     '''Create a new slideshow and cache its write_token locally.'''
     try:
-        with QAgentClient() as client:
+        with AgentClipClient() as client:
             result = client.create_slideshow(title=title, description=description)
-    except QAgentError as exc:
+    except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
 
     StateStore().remember(
@@ -102,7 +102,7 @@ def slideshow_create(
 
 @slideshow_app.command('add')
 def slideshow_add(
-    slideshow_id: str = typer.Argument(..., help='ID returned by `qagent slideshow create`.'),
+    slideshow_id: str = typer.Argument(..., help='ID returned by `agentclip slideshow create`.'),
     image: Path = typer.Argument(..., exists=True, dir_okay=False, help='Path to screenshot.'),
     caption: str = typer.Option(..., '--caption', '-c', help='Caption for this slide.'),
     as_json: bool = typer.Option(False, '--json'),
@@ -110,11 +110,11 @@ def slideshow_add(
     '''Append a slide to an existing slideshow.'''
     token = _require_token(slideshow_id)
     try:
-        with QAgentClient() as client:
+        with AgentClipClient() as client:
             result = client.add_slide(
                 slideshow_id, image_path=image, caption=caption, write_token=token
             )
-    except QAgentError as exc:
+    except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
 
     _print(
@@ -143,7 +143,7 @@ def slideshow_update(
 
     token = _require_token(slideshow_id)
     try:
-        with QAgentClient() as client:
+        with AgentClipClient() as client:
             result = client.update_slide(
                 slideshow_id,
                 position,
@@ -151,7 +151,7 @@ def slideshow_update(
                 caption=caption,
                 write_token=token,
             )
-    except QAgentError as exc:
+    except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
 
     _print(
@@ -173,9 +173,9 @@ def slideshow_summary(
     '''Set the slideshow's summary near the end of an agent run.'''
     token = _require_token(slideshow_id)
     try:
-        with QAgentClient() as client:
+        with AgentClipClient() as client:
             result = client.set_summary(slideshow_id, summary=summary, write_token=token)
-    except QAgentError as exc:
+    except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
 
     _print(result.model_dump(), as_json=as_json, summary='summary set.')
@@ -214,21 +214,21 @@ def slideshow_list(
 @app.command('install-skill')
 def install_skill(
     target: Path = typer.Option(
-        Path.home() / '.claude' / 'skills' / 'qagent',
+        Path.home() / '.claude' / 'skills' / 'agentclip',
         '--target',
-        help='Directory to install SKILL.md into. Defaults to ~/.claude/skills/qagent.',
+        help='Directory to install SKILL.md into. Defaults to ~/.claude/skills/agentclip.',
     ),
     force: bool = typer.Option(
         False, '--force', help='Overwrite an existing SKILL.md without prompting.'
     ),
 ) -> None:
-    '''Install the bundled qagent skill so agents pick up the prompt guidance.
+    '''Install the bundled agentclip skill so agents pick up the prompt guidance.
 
     The skill is what makes generated slideshows actually good. It teaches
     the agent when to screenshot, how to caption, and how to write the
     summary. Reinstall after upgrading the package to pull in updates.
     '''
-    skill_source = resources.files('qagent.skill').joinpath('SKILL.md')
+    skill_source = resources.files('agentclip.skill').joinpath('SKILL.md')
     if not skill_source.is_file():
         raise _bail('SKILL.md not bundled with this install. Open a github issue.')
 
@@ -247,7 +247,7 @@ def install_skill(
 
 @app.command('version')
 def version() -> None:
-    '''Print the installed qagent version.'''
+    '''Print the installed agentclip version.'''
     typer.echo(__version__)
 
 
