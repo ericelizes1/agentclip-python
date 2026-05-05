@@ -24,7 +24,7 @@ class SlideAdded(BaseModel):
     id: int
     position: int
     caption: str
-    image_url: str
+    media_url: str
 
 
 class SlideUpdated(BaseModel):
@@ -33,7 +33,7 @@ class SlideUpdated(BaseModel):
     id: int
     position: int
     caption: str
-    image_url: str
+    media_url: str
 
 
 class SlideshowPatched(BaseModel):

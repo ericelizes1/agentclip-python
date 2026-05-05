@@ -103,16 +103,19 @@ def slideshow_create(
 @slideshow_app.command('add')
 def slideshow_add(
     slideshow_id: str = typer.Argument(..., help='ID returned by `agentclip slideshow create`.'),
-    image: Path = typer.Argument(..., exists=True, dir_okay=False, help='Path to screenshot.'),
+    media: Path = typer.Argument(
+        ..., exists=True, dir_okay=False,
+        help='Path to image or video clip (PNG, JPEG, GIF, WebP, MP4, WebM, MOV).',
+    ),
     caption: str = typer.Option(..., '--caption', '-c', help='Caption for this slide.'),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
-    '''Append a slide to an existing slideshow.'''
+    '''Append a slide to an existing slideshow. Accepts image or video clip.'''
     token = _require_token(slideshow_id)
     try:
         with AgentClipClient() as client:
             result = client.add_slide(
-                slideshow_id, image_path=image, caption=caption, write_token=token
+                slideshow_id, media_path=media, caption=caption, write_token=token
             )
     except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
@@ -131,15 +134,16 @@ def slideshow_add(
 def slideshow_update(
     slideshow_id: str = typer.Argument(...),
     position: int = typer.Argument(..., help='1-based slide position to replace.'),
-    image: Path | None = typer.Option(
-        None, '--image', exists=True, dir_okay=False, help='New screenshot.'
+    media: Path | None = typer.Option(
+        None, '--media', '-m', exists=True, dir_okay=False,
+        help='New media file (image or video).',
     ),
     caption: str | None = typer.Option(None, '--caption', '-c', help='New caption.'),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
-    '''Replace the image and/or caption of an existing slide.'''
-    if image is None and caption is None:
-        raise _bail('pass --image, --caption, or both')
+    '''Replace the media and/or caption of an existing slide.'''
+    if media is None and caption is None:
+        raise _bail('pass --media, --caption, or both')
 
     token = _require_token(slideshow_id)
     try:
@@ -147,7 +151,7 @@ def slideshow_update(
             result = client.update_slide(
                 slideshow_id,
                 position,
-                image_path=image,
+                media_path=media,
                 caption=caption,
                 write_token=token,
             )

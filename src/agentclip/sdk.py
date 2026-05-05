@@ -97,7 +97,7 @@ class AgentClipClient:
         self,
         slideshow_id: str,
         *,
-        image_path: str | os.PathLike[str],
+        media_path: str | os.PathLike[str],
         caption: str,
         write_token: str,
     ) -> SlideAdded:
@@ -106,9 +106,9 @@ class AgentClipClient:
         Captions and images are uploaded together as one multipart request
         so a network failure cannot leave a slide with one and not the other.
         '''
-        image = _resolve_image(image_path)
+        image = _resolve_media(media_path)
         with image.open('rb') as fh:
-            files = {'image': (image.name, fh, _guess_mime(image))}
+            files = {'media': (image.name, fh, _guess_mime(image))}
             data = {'caption': caption}
             response = self._http.post(
                 f'{self.base_url}/api/slideshow/{slideshow_id}/slides/',
@@ -123,17 +123,17 @@ class AgentClipClient:
         slideshow_id: str,
         slide_position: int,
         *,
-        image_path: str | os.PathLike[str] | None = None,
+        media_path: str | os.PathLike[str] | None = None,
         caption: str | None = None,
         write_token: str,
     ) -> SlideUpdated:
         '''Replace fields on an existing slide. Image, caption, or both.
 
-        At least one of ``image_path`` and ``caption`` must be provided.
+        At least one of ``media_path`` and ``caption`` must be provided.
         A no-op PATCH would silently succeed and waste a round-trip.
         '''
-        if image_path is None and caption is None:
-            raise AgentClipError('update_slide requires image_path and/or caption')
+        if media_path is None and caption is None:
+            raise AgentClipError('update_slide requires media_path and/or caption')
 
         url = f'{self.base_url}/api/slideshow/{slideshow_id}/slides/{slide_position}/'
         headers = _auth(write_token)
@@ -141,10 +141,10 @@ class AgentClipClient:
         if caption is not None:
             data['caption'] = caption
 
-        if image_path is not None:
-            image = _resolve_image(image_path)
+        if media_path is not None:
+            image = _resolve_media(media_path)
             with image.open('rb') as fh:
-                files = {'image': (image.name, fh, _guess_mime(image))}
+                files = {'media': (image.name, fh, _guess_mime(image))}
                 response = self._http.patch(url, files=files, data=data, headers=headers)
         else:
             # No image, no multipart needed. Simpler JSON keeps the request
@@ -217,17 +217,18 @@ class AgentClipClient:
             ) from exc
 
 
-def _resolve_image(path: str | os.PathLike[str]) -> Path:
-    '''Validate an image path before we try to upload it.
+def _resolve_media(path: str | os.PathLike[str]) -> Path:
+    '''Validate a media path before we try to upload it.
 
     Failing at the SDK boundary gives a much better error than letting
-    httpx blow up mid-multipart-stream.
+    httpx blow up mid-multipart-stream. Accepts both image and video
+    paths; the backend classifies by Content-Type at upload.
     '''
     resolved = Path(path).expanduser().resolve()
     if not resolved.exists():
-        raise AgentClipError(f'image not found: {resolved}')
+        raise AgentClipError(f'media not found: {resolved}')
     if not resolved.is_file():
-        raise AgentClipError(f'image path is not a file: {resolved}')
+        raise AgentClipError(f'media path is not a file: {resolved}')
     return resolved
 
 

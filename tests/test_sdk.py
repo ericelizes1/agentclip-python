@@ -94,7 +94,7 @@ def test_add_slide_sends_multipart_with_auth(tmp_path):
                 'id': 1,
                 'position': 1,
                 'caption': 'first slide',
-                'image_url': 'https://q/s/x/img/1.png',
+                'media_url': 'https://q/s/x/img/1.png',
             },
         )
 
@@ -103,7 +103,7 @@ def test_add_slide_sends_multipart_with_auth(tmp_path):
 
     client = make_client(handler)
     result = client.add_slide(
-        'ss_x', image_path=image, caption='first slide', write_token='wt_secret'
+        'ss_x', media_path=image, caption='first slide', write_token='wt_secret'
     )
 
     assert captured['method'] == 'POST'
@@ -116,12 +116,12 @@ def test_add_slide_sends_multipart_with_auth(tmp_path):
     assert result.position == 1
 
 
-def test_add_slide_rejects_missing_image(tmp_path):
+def test_add_slide_rejects_missing_media(tmp_path):
     client = make_client(lambda r: httpx.Response(500))
-    with pytest.raises(AgentClipError, match='image not found'):
+    with pytest.raises(AgentClipError, match='media not found'):
         client.add_slide(
             'ss_x',
-            image_path=tmp_path / 'does-not-exist.png',
+            media_path=tmp_path / 'does-not-exist.png',
             caption='c',
             write_token='wt',
         )
@@ -143,7 +143,7 @@ def test_update_slide_caption_only_sends_json_patch():
                 'id': 7,
                 'position': 3,
                 'caption': 'fixed',
-                'image_url': 'https://q/s/x/img/3.png',
+                'media_url': 'https://q/s/x/img/3.png',
             },
         )
 
@@ -169,7 +169,7 @@ def test_update_slide_with_image_sends_multipart(tmp_path):
                 'id': 7,
                 'position': 3,
                 'caption': 'new caption',
-                'image_url': 'https://q/s/x/img/3.png',
+                'media_url': 'https://q/s/x/img/3.png',
             },
         )
 
@@ -177,7 +177,7 @@ def test_update_slide_with_image_sends_multipart(tmp_path):
     image.write_bytes(b'\x89PNG\r\n\x1a\nfake')
 
     make_client(handler).update_slide(
-        'ss_x', 3, image_path=image, caption='new caption', write_token='wt'
+        'ss_x', 3, media_path=image, caption='new caption', write_token='wt'
     )
     assert captured['content_type'].startswith('multipart/form-data')
     assert b'new caption' in captured['body']
@@ -186,7 +186,7 @@ def test_update_slide_with_image_sends_multipart(tmp_path):
 
 def test_update_slide_no_args_raises():
     client = make_client(lambda r: httpx.Response(500))
-    with pytest.raises(AgentClipError, match='requires image_path and/or caption'):
+    with pytest.raises(AgentClipError, match='requires media_path and/or caption'):
         client.update_slide('ss_x', 1, write_token='wt')
 
 

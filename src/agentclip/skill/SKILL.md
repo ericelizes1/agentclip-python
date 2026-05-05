@@ -35,9 +35,16 @@ Skip it when:
 | Tool | When | Required args |
 |---|---|---|
 | `slideshow_create` | Once, at the start. | `title`, `description` |
-| `slideshow_add_slide` | After each meaningful action you screenshotted. | `slideshow_id`, `image_path`, `caption` |
+| `slideshow_add_slide` | After each meaningful action you captured. | `slideshow_id`, `media_path`, `caption` |
 | `slideshow_update_slide` | Whenever you'd otherwise post a corrected duplicate. | `slideshow_id`, `slide_position`, plus what's changing |
 | `slideshow_set_summary` | Once, near the end. | `slideshow_id`, `summary` |
+
+`media_path` accepts both static images (PNG, JPEG, GIF, WebP) and short
+video clips (MP4, WebM, MOV). Use a screenshot for individual states; use
+a short video clip when motion is part of the story, like a janky
+animation, a race condition you can only see in a recording, or a flow
+worth showing in fluid motion. Cap clips at a few seconds; the upload
+limit is 25MB.
 
 The tools persist your `write_token` locally for you. You only need the
 `slideshow_id` after `slideshow_create`.
@@ -163,21 +170,21 @@ slideshow_create(
 # Slide 1: starting state
 slideshow_add_slide(
   slideshow_id="ss_abc123",
-  image_path="/tmp/01-empty-projects.png",
+  media_path="/tmp/01-empty-projects.png",
   caption="Logged in as a brand-new account. Projects list is empty as expected. The 'New Project' CTA is the only obvious next step."
 )
 
 # Slide 2: open the form
 slideshow_add_slide(
   slideshow_id="ss_abc123",
-  image_path="/tmp/02-form-open.png",
+  media_path="/tmp/02-form-open.png",
   caption="Clicked New Project. Modal opened with three fields: name, description, visibility. Defaulted to 'private' which feels right."
 )
 
 # Slide 3: submitted empty
 slideshow_add_slide(
   slideshow_id="ss_abc123",
-  image_path="/tmp/03-empty-submit.png",
+  media_path="/tmp/03-empty-submit.png",
   caption="Submitted with no name to test validation. Got an inline 'Name is required' error and the field highlighted in red. Good."
 )
 
@@ -186,7 +193,7 @@ slideshow_add_slide(
 # Found a real bug
 slideshow_add_slide(
   slideshow_id="ss_abc123",
-  image_path="/tmp/09-bug-redirect.png",
+  media_path="/tmp/09-bug-redirect.png",
   caption="Created a project named 'Test 1'. The success toast fired, but the redirect went to /projects/undefined instead of /projects/<id>. Bug: the response payload appears to be missing the 'id' field."
 )
 

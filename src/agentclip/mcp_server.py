@@ -86,12 +86,13 @@ def slideshow_add_slide(
         str,
         Field(description='ID returned by slideshow_create.'),
     ],
-    image_path: Annotated[
+    media_path: Annotated[
         str,
         Field(
             description=(
-                'Absolute path on the local filesystem to the screenshot. '
-                'PNG or JPEG. The agent should save the screenshot to disk '
+                'Absolute path on the local filesystem to the media file. '
+                'Images: PNG, JPEG, GIF (animated GIFs render natively), WebP. '
+                'Videos: MP4, WebM, MOV. Maximum 25MB. Save the file to disk '
                 'before calling this tool.'
             )
         ),
@@ -106,13 +107,18 @@ def slideshow_add_slide(
         ),
     ],
 ) -> dict:
-    '''Append a screenshot + caption as the next slide in the slideshow.'''
+    '''Append a media clip + caption as the next slide.
+
+    Accepts both static images and short video clips. The backend
+    classifies the upload by its Content-Type and the viewer renders
+    image clips with <img> and video clips with <video>.
+    '''
     write_token = _resolve_token(slideshow_id)
     client = AgentClipClient()
     try:
         result = client.add_slide(
             slideshow_id,
-            image_path=image_path,
+            media_path=media_path,
             caption=caption,
             write_token=write_token,
         )
@@ -131,11 +137,12 @@ def slideshow_update_slide(
         int,
         Field(description='1-based position of the slide to update.'),
     ],
-    image_path: Annotated[
+    media_path: Annotated[
         str | None,
         Field(
             description=(
-                'New screenshot path. Omit to leave the existing image in place.'
+                'New media path (image or short video). Omit to leave the '
+                'existing media in place.'
             )
         ),
     ] = None,
@@ -156,7 +163,7 @@ def slideshow_update_slide(
         result = client.update_slide(
             slideshow_id,
             slide_position,
-            image_path=image_path,
+            media_path=media_path,
             caption=caption,
             write_token=write_token,
         )
