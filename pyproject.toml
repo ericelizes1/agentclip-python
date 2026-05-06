@@ -26,6 +26,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Browser-driving extras. Pulls in Playwright so `agentclip clip` and
+# the MCP server can drive a real Chromium instance. Skipped by default
+# because most agent runtimes (Claude Code's tool harness, e.g.) bring
+# their own browser substrate; only standalone CLI users need this.
+#
+# Install with: pip install 'agentclip[browser]'
+# First-run setup will then download Chromium binaries automatically.
+browser = [
+    'playwright>=1.49',
+]
+
 dev = [
     'pytest>=8.0',
     'pytest-asyncio>=0.23',

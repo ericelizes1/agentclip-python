@@ -69,7 +69,7 @@ class AgentClipClient:
         # tmp_path so they never touch ~/.agentclip/.
         self._state = state_store if state_store is not None else StateStore()
 
-    def __enter__(self) -> 'AgentClipClient':
+    def __enter__(self) -> AgentClipClient:
         return self
 
     def __exit__(self, *exc: object) -> None:

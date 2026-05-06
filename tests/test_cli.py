@@ -11,8 +11,6 @@ we are exercising the CLI's surrounding behavior, not the wire shape.
 
 from __future__ import annotations
 
-import json
-
 import httpx
 import pytest
 from typer.testing import CliRunner

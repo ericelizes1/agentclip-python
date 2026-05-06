@@ -10,12 +10,11 @@ silent regressions there would be invisible in the SDK's own surface.
 from __future__ import annotations
 
 import json
+import tempfile
+from pathlib import Path
 
 import httpx
 import pytest
-
-import tempfile
-from pathlib import Path
 
 from agentclip.sdk import AgentClipClient, AgentClipError
 from agentclip.state import StateStore

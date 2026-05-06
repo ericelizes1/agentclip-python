@@ -27,6 +27,7 @@ import typer
 
 from . import __version__
 from .sdk import AgentClipClient, AgentClipError
+from .setup import ensure_setup, run_setup
 from .state import StateStore
 
 app = typer.Typer(
@@ -39,6 +40,31 @@ slideshow_app = typer.Typer(help='Create and manage slideshows.', no_args_is_hel
 app.add_typer(slideshow_app, name='slideshow')
 
 
+# Subcommands that we explicitly do NOT want to trigger lazy first-run
+# setup. `version` is a status query, `setup` runs setup itself, and
+# `install-skill` is the manual fallback for the same step setup
+# performs — running it nested would be confusing.
+_SKIP_LAZY_SETUP = frozenset({'version', 'setup', 'install-skill'})
+
+
+@app.callback()
+def _lazy_first_run(ctx: typer.Context) -> None:
+    '''Run lazy first-run setup before any subcommand executes.
+
+    Typer dispatches the subcommand AFTER this callback returns, so
+    inserting setup here means a fresh `pip install agentclip` followed
+    by `agentclip slideshow create ...` does the right thing without an
+    explicit setup step. Subsequent invocations are a single Path.exists()
+    check.
+
+    Skipped for status-only or setup-adjacent subcommands so they stay
+    fast and never recurse on themselves.
+    '''
+    if ctx.invoked_subcommand in _SKIP_LAZY_SETUP:
+        return
+    ensure_setup()
+
+
 def _print(payload: dict, *, as_json: bool, summary: str | None = None) -> None:
     '''Single output path so --json behavior stays consistent across commands.'''
     if as_json:
@@ -49,7 +75,7 @@ def _print(payload: dict, *, as_json: bool, summary: str | None = None) -> None:
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
 
 
-def _bail(message: str, *, body: str | None = None) -> 'typer.Exit':
+def _bail(message: str, *, body: str | None = None) -> typer.Exit:
     '''Print a real error to stderr and exit non-zero.
 
     Returned (not raised) so call sites read as ``raise _bail(...)``,
@@ -331,6 +357,30 @@ def whoami(
         if current['url']:
             line += f'\n url:  {current["url"]}'
         typer.echo(line)
+
+
+# ---------- setup ----------
+
+
+@app.command('setup')
+def setup(
+    force: bool = typer.Option(
+        False, '--force', help='Re-run setup even if the marker exists.',
+    ),
+    quiet: bool = typer.Option(
+        False, '--quiet', '-q', help='Suppress per-step status output.',
+    ),
+) -> None:
+    '''Run first-run setup explicitly.
+
+    Lazy first-run does this automatically the first time you invoke
+    any other subcommand, so most users will never call this directly.
+    Re-run with --force after upgrading the package to refresh the
+    bundled skill or after changing browser extras.
+    '''
+    ran = run_setup(force=force, quiet=quiet)
+    if not ran and not quiet:
+        typer.echo('  (pass --force to re-run anyway.)')
 
 
 # ---------- version ----------

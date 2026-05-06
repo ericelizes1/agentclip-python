@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -106,7 +106,7 @@ class StateStore:
             'write_token': write_token,
             'share_url': share_url,
             'title': title,
-            'created_at': datetime.now(timezone.utc).isoformat(),
+            'created_at': datetime.now(UTC).isoformat(),
         }
         self._write(data)
 
