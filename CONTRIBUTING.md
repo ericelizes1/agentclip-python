@@ -20,7 +20,7 @@ Thanks for considering a contribution. AgentClip is a small, focused project, so
 
 ```bash
 # Clone and enter
-git clone https://github.com/ericelizes/agentclip
+git clone https://github.com/ericelizes1/agentclip
 cd agentclip
 
 # Install with uv (recommended) or pip

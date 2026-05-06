@@ -4,8 +4,8 @@ Turn your AI agent's QA runs into shareable clips.
 
 [![PyPI](https://img.shields.io/pypi/v/agentclip.svg)](https://pypi.org/project/agentclip/)
 [![Python](https://img.shields.io/pypi/pyversions/agentclip.svg)](https://pypi.org/project/agentclip/)
-[![CI](https://github.com/ericelizes/agentclip-python/actions/workflows/ci.yml/badge.svg)](https://github.com/ericelizes/agentclip-python/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/pypi/l/agentclip.svg)](https://github.com/ericelizes/agentclip-python/blob/main/LICENSE)
+[![CI](https://github.com/ericelizes1/agentclip-python/actions/workflows/ci.yml/badge.svg)](https://github.com/ericelizes1/agentclip-python/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/pypi/l/agentclip.svg)](https://github.com/ericelizes1/agentclip-python/blob/main/LICENSE)
 
 Your AI agent drives the browser. AgentClip captures the moments that matter, screenshots and captions, and ships you back a single URL anyone can watch.
 
@@ -92,7 +92,7 @@ Restart your agent runtime. The four tools below will register automatically.
 
 ## Self-hosting the backend
 
-Companion repo: [`ericelizes/agentclip`](https://github.com/ericelizes/agentclip) — the platform monorepo with the Django API and Next.js front-end, plus a `.do/app.yaml` for one-command deploy to DigitalOcean App Platform. Point `AGENTCLIP_BASE_URL` at your domain.
+Companion repo: [`ericelizes1/agentclip`](https://github.com/ericelizes1/agentclip) — the platform monorepo with the Django API and Next.js front-end, plus a `.do/app.yaml` for one-command deploy to DigitalOcean App Platform. Point `AGENTCLIP_BASE_URL` at your domain.
 
 ## Development
 

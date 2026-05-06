@@ -24,5 +24,5 @@ Initial public release.
 - Default backend URL: `https://agentclip.dev`. Override with `AGENTCLIP_BASE_URL` for self-hosted deploys.
 - v0.1 has no account flow; the `write_token` returned at create time is the only credential.
 
-[Unreleased]: https://github.com/ericelizes/agentclip-python/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/ericelizes/agentclip-python/releases/tag/v0.1.0
+[Unreleased]: https://github.com/ericelizes1/agentclip-python/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ericelizes1/agentclip-python/releases/tag/v0.1.0
