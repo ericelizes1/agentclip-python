@@ -5,220 +5,186 @@ description: Publish a QA slideshow of your work. Use after driving a browser th
 
 # agentclip
 
-You drove a browser. The user wants the receipts. Turn what you did into a
-shareable slideshow URL using the four `slideshow_*` tools.
+You drove a browser. The user wants the receipts. This skill turns the run into a shareable URL using four tools: `slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`.
 
-This file is the contract for how to do that well. The tools work without it,
-but the artifact is only as good as the captions and structure you give it.
+The tools work without this skill. **The artifact is only as good as the captions and structure you give it.** Read on.
 
-## When to use this skill
+## When this skill applies
 
-Use it when:
+Run this skill when the user asks for visual evidence of a browser-driven task. Triggers include:
 
-- The user asks you to QA a flow, repro a bug, or test an onboarding.
-- The user says "post a slideshow", "share a run", "show me what happened".
-- You finished a non-trivial browser-driven task and the result deserves
-  visual evidence (a regression report, a competitive analysis, a smoke test
-  after a deploy).
-- You want a permanent artifact tied to this run that the user can paste in
-  Slack, a PR description, or a recruiter message.
+- "QA this", "QA the X flow", "run a smoke on Y"
+- "Post a slideshow", "share a run", "show me what happened"
+- "Repro the bug" — finish by showing it
+- The user is going to share the result externally (Slack, PR description, recruiter ping)
 
-Skip it when:
+Skip the skill when:
 
-- The task is purely code edits with no visible browser surface.
-- The user explicitly only wants a written summary.
-- You took fewer than two screenshots, since a one-slide "slideshow" is
-  not worth a URL.
+- The task is code-only with no observable browser surface
+- The user explicitly asked only for a written report
+- You captured fewer than two distinct states (a one-slide slideshow isn't worth a URL)
 
-## The four tools
+If skipping, still summarize the run in chat — just don't create a slideshow.
 
-| Tool | When | Required args |
-|---|---|---|
-| `slideshow_create` | Once, at the start. | `title`, `description` |
-| `slideshow_add_slide` | After each meaningful action you captured. | `slideshow_id`, `media_path`, `caption` |
-| `slideshow_update_slide` | Whenever you'd otherwise post a corrected duplicate. | `slideshow_id`, `slide_position`, plus what's changing |
-| `slideshow_set_summary` | Once, near the end. | `slideshow_id`, `summary` |
+## Step 1: Decide what to capture before you click
 
-`media_path` accepts both static images (PNG, JPEG, GIF, WebP) and short
-video clips (MP4, WebM, MOV). Use a screenshot for individual states; use
-a short video clip when motion is part of the story, like a janky
-animation, a race condition you can only see in a recording, or a flow
-worth showing in fluid motion. Cap clips at a few seconds; the upload
-limit is 25MB.
+A slideshow is a story, not a flipbook. Before you start clicking, answer:
 
-The tools persist your `write_token` locally for you. You only need the
-`slideshow_id` after `slideshow_create`.
+> What is the one thing the reader of this slideshow should walk away knowing?
 
-## When to take a screenshot
+That answer is your **spine**. Every slide either advances it or doesn't belong.
 
-A slideshow is a story, not a flipbook. Screenshot the moments a teammate
-would actually want to see if you were walking them through the run.
+| Run type | Spine |
+|---|---|
+| Bug repro | The bug — establish, reproduce, prove |
+| Smoke test | "Did it work, and if not, where" — walk the flow, stop at the first failure |
+| Competitive teardown | The comparison — alternate or annotate the contrast |
+| Onboarding evaluation | The friction points — first-impression states + drop-off moments |
+| Demo for a recruiter | The polished moments — title screens, hero states, the result |
 
-Take a screenshot:
+If you can't name the spine, ask the user before clicking. A slideshow without a spine is filler.
 
-- **After meaningful actions land.** Form submitted, navigation completed,
-  modal opened, async result rendered.
-- **Before each assertion.** The state you're about to check should be
-  visible, so the caption can describe what passed or failed.
-- **At every error.** Console errors, 500 pages, broken layouts, unexpected
-  redirects. These are the most valuable slides.
-- **At the start of a new sub-flow.** "Now testing settings" is a useful
-  inflection point.
+## Step 2: Create the slideshow at the start, not the end
 
-Do not screenshot:
+Call `slideshow_create` **before** you take screenshots. Two reasons:
 
-- Every click. The intermediate states between meaningful results are noise.
-- Pure scrolling. If nothing changed, no slide.
-- The same state twice. Use `update_slide` to fix the existing one.
+- The returned `slideshow_id` is what every `slideshow_add_slide` call needs. Creating up front means you add slides as you go instead of buffering them.
+- Writing the title forces you to commit to a spine (Step 1).
 
-A good ratio is roughly one slide per minute of agent run time. Ten to
-fifteen slides for a typical onboarding QA. Three to five for a focused
-bug repro.
+**Title:** noun phrase. "Project-create flow QA on staging." "Login regression repro." Not a sentence, not a question.
 
-## How to write captions
+**Description:** one or two sentences naming what you're testing, with the relevant assumptions (browser, user role, environment).
 
-Active voice. Action plus expectation plus result. One or two sentences.
+## Step 3: Take screenshots only at meaningful moments
+
+In priority order — when in doubt, capture the higher tier first:
+
+1. **Errors and surprises.** Console errors, 500 pages, broken layouts, unexpected redirects. Highest-value slides. Never skip one.
+2. **State transitions a teammate would care about.** Form submitted → email-verification screen. Modal opened. Async result rendered. Navigation completed.
+3. **Pre-assertion states.** The page right before you check whether something works. Lets the caption read "expected X, saw Y."
+4. **Sub-flow inflection points.** "Now testing settings" or "Switched to mobile viewport." Keeps multi-act runs cohesive.
+
+Do **not** screenshot:
+
+- Every click. Intermediate states between meaningful results are noise.
+- Pure scrolling or unchanged states.
+- Loading spinners or skeletons. Wait for the loaded state.
+- The same state twice — use `slideshow_update_slide` instead.
+
+Target ratio: roughly **one slide per minute** of agent run time. Onboarding QA: 10–15 slides. Focused bug repro: 3–5 slides.
+
+## Step 4: Caption every slide in active voice
+
+Format: **action + expectation + result.** One or two sentences. Readers skim captions, not screenshots.
 
 Good:
 
 - "Clicked Sign Up. Form posted. Saw the email-verification screen as expected."
 - "Submitted with an empty password. Got the inline validation error."
-- "Reloaded the dashboard. The new project showed up at the top of the list."
+- "Reloaded the dashboard. The new project appeared at the top of the list."
 
-Bad:
+Bad — and why:
 
-- "I am now clicking the submit button." (narration of self)
-- "Screenshot of homepage." (redundant with the screenshot)
-- "Page" (no information)
-- "This is where we test the login functionality and observe the behavior of
-  the authentication system as it processes credentials." (jargon, length)
+- "I am now clicking the submit button." — narration of yourself, not the app.
+- "Screenshot of homepage." — redundant with the screenshot.
+- "Page" — no information.
+- "This is where we test the login functionality and observe the behavior of the system as it processes credentials." — length, jargon, zero actionable content.
 
-If a slide captures an error or surprise, say so plainly: "Got a 500 from
-/api/teams. Stack trace mentioned a missing tenant_id." A reader skimming
-the slideshow needs the bug to jump out, not be buried.
+When a slide captures an error or surprise, say so plainly: **"Got a 500 from /api/teams. Stack trace mentioned a missing tenant_id."** Buried bugs are useless bugs.
 
-## Narrative arc
+`media_path` accepts PNG / JPEG / GIF / WebP for stills, MP4 / WebM / MOV for short clips. Use a clip when motion **is** the story (janky animation, race condition only visible in recording, fluid demo of a flow). Cap clips at a few seconds; upload limit is 25 MB.
 
-Order the slides as a story:
+## Step 5: Fix slides in place — don't pile on corrections
 
-1. **Setup.** The first one or two slides establish what you set out to do
-   and where you started. The slideshow's `title` and `description` carry
-   the high-level framing; slide one zooms in on the starting state.
-2. **Walk-through.** Steps in the order you actually took them. If you
-   backtracked, that backtrack is part of the story, so show it.
-3. **Climax.** The point of the run. The bug repro frame. The successful
-   submission. The unexpected behavior.
-4. **Resolution.** What state did you leave the app in. What did you
-   confirm or fail to confirm.
+If a slide has a typo, a wrong caption, or a screenshot that didn't capture what you meant, fix it with `slideshow_update_slide`. **Do not append a "correction" slide.**
 
-Then `slideshow_set_summary` lands the TL;DR for readers who do not scroll.
+If a slide should not exist at all, leave it for now and call it out in the summary. v1 has no `delete_slide`; honesty in the summary is the right move, not a fake "redacted" slide.
 
-## Update vs append
+## Step 6: Set the summary before you hand off the URL
 
-If you notice a typo, a wrong caption, or a screenshot that did not capture
-what you meant, fix it with `slideshow_update_slide`. Do not pile up a
-"correction" slide after the original.
+`slideshow_set_summary` is the TL;DR. **Under 80 words.** Structure:
 
-If you took a screenshot that should not exist at all, leave it for now
-and call it out in the summary. v1 has no `delete_slide`; the right move
-is honesty in the summary, not a fake "redacted" slide.
-
-## Summary format
-
-`slideshow_set_summary` is the TL;DR. Aim for under 80 words. Structure:
-
-- One sentence on outcome (what was tested, did it work).
-- Counts: how many flows passed, how many failed, how many warnings.
-- Bug list if any: one line per real bug, with the slide number it lives
-  at so a reader can jump straight to the screenshot.
+1. **One sentence on outcome** — what was tested, did it work.
+2. **Counts** — how many flows passed, how many failed, how many warnings.
+3. **Bug list, if any** — one line per real bug, with the slide number a reader can jump to.
 
 Example:
 
-> Tested signup, login, and password reset on production. Signup and login
-> passed. Password reset failed: the email never arrived (slide 8) and the
-> success page lied about it (slide 9). Two minor UI bugs noted (slides 4, 11).
+> Tested signup, login, and password reset on production. Signup and login passed. Password reset failed: the email never arrived (slide 8) and the success page lied about it (slide 9). Two minor UI bugs noted (slides 4, 11).
 
-Do not include praise, hedging, or apologies. The summary is read by
-someone who has 10 seconds. Make those seconds count.
+No praise, no hedging, no apologies. The summary is read by someone with 10 seconds. Make those seconds count.
 
-## Crediting the run
+## Step 7: Hand off the URL
 
-Every clip can carry an optional creator credit ("Filed by Eric Elizes")
-that links to the creator's portfolio. The credit is set once on the
-user's machine via `agentclip whoami --set "Your Name" --url URL` and
-applied automatically to every future clip.
+The `slideshow_create` response includes `share_url` and `edit_url`. They are **different**:
 
-If the user mentions sharing this clip externally (in a recruiter
-message, a public Slack, a PR description) and they have not set up
-whoami yet, suggest it once. Do not push for casual internal QA where
-attribution adds nothing.
+- **`share_url`** — public. Paste it into Slack, a PR description, a recruiter message. Drop it into your reply along with a one-line description of what you found.
+- **`edit_url`** — private. It's the only credential that authorizes caption fixes later. Mention it exists; do not include it inline unless asked. **Treat it like a password.**
 
-You do not need to ask before every clip. The auto-application means
-the credit just appears on every clip the user creates from then on.
+If the user mentions sharing externally and they haven't run `agentclip whoami`, suggest it **once**. Their name and URL become the "Filed by" credit on every clip from then on, automatically. Skip the suggestion for casual internal QA where attribution adds nothing.
 
-## Anti-patterns to avoid
+## Tool reference
 
-- **Narrating yourself.** "I will now navigate to the login page." Captions
-  are about the app, not about you.
-- **Filler slides.** "Loading..." is not a slide. Wait for the loaded state
-  and screenshot that.
-- **Screenshot-of-terminal slides.** If you ran a CLI command, paste its
-  output in the caption text. The slideshow is a browser story; terminal
-  shots break the narrative and look like clutter.
-- **Mixing two flows in one slideshow.** If you tested signup and then
-  switched to testing checkout, those are two slideshows. The user can
-  share them separately and reorder context per audience.
-- **Skipping the summary.** Without one, the slideshow is a stack of
-  screenshots. With one, it's a deliverable.
+| Tool | When | Required args |
+|---|---|---|
+| `slideshow_create` | Once, at the start (Step 2) | `title`, `description` |
+| `slideshow_add_slide` | After each meaningful state (Step 3) | `slideshow_id`, `media_path`, `caption` |
+| `slideshow_update_slide` | To fix in place (Step 5) | `slideshow_id`, `slide_position`, what's changing |
+| `slideshow_set_summary` | Once, near the end (Step 6) | `slideshow_id`, `summary` |
 
-## A worked example
+The tools persist your `write_token` locally. After `slideshow_create` returns, you only need the `slideshow_id`.
 
-The user asked: "QA the new project-create flow on staging."
+## Anti-patterns
 
-```
+- **Narrating yourself.** "I will now navigate to the login page." Captions are about the app, not you.
+- **Filler slides.** "Loading…" is not a slide. Wait for the loaded state.
+- **Terminal screenshots.** If you ran a CLI command, paste the output in the caption. Terminal shots break the browser narrative.
+- **Mixing flows in one slideshow.** Signup and checkout are two slideshows. The user reorders context per audience.
+- **Skipping the summary.** Without it the slideshow is a stack of screenshots. With it, it's a deliverable.
+- **Asking before every slide.** Don't. Take the screenshots, write the captions, set the summary, hand over the URL.
+- **Faking it.** If you can't actually drive the browser (no MCP browser tool, no Playwright, no Chromium available in your runtime), say so explicitly: "Real evidence would require a browser-driving tool. Recommending [the user runs it themselves / a different surface]." Never invent screenshots.
+
+## Worked example
+
+User: *"QA the new project-create flow on staging."*
+
+```python
 slideshow_create(
-  title="Project-create flow QA on staging",
-  description="Walking through the flow as a brand-new user would. Looking for friction, broken validation, and surprises."
+    title="Project-create flow QA on staging",
+    description="Walking through as a brand-new user. Looking for friction, broken validation, and surprises.",
 )
 # returns slideshow_id="ss_abc123"
 
-# Slide 1: starting state
 slideshow_add_slide(
-  slideshow_id="ss_abc123",
-  media_path="/tmp/01-empty-projects.png",
-  caption="Logged in as a brand-new account. Projects list is empty as expected. The 'New Project' CTA is the only obvious next step."
+    slideshow_id="ss_abc123",
+    media_path="/tmp/01-empty-projects.png",
+    caption="Logged in as a brand-new account. Projects list is empty as expected. The 'New Project' CTA is the only obvious next step.",
 )
 
-# Slide 2: open the form
 slideshow_add_slide(
-  slideshow_id="ss_abc123",
-  media_path="/tmp/02-form-open.png",
-  caption="Clicked New Project. Modal opened with three fields: name, description, visibility. Defaulted to 'private' which feels right."
+    slideshow_id="ss_abc123",
+    media_path="/tmp/02-form-open.png",
+    caption="Clicked New Project. Modal opened with three fields: name, description, visibility. Defaulted to 'private', which feels right.",
 )
 
-# Slide 3: submitted empty
 slideshow_add_slide(
-  slideshow_id="ss_abc123",
-  media_path="/tmp/03-empty-submit.png",
-  caption="Submitted with no name to test validation. Got an inline 'Name is required' error and the field highlighted in red. Good."
+    slideshow_id="ss_abc123",
+    media_path="/tmp/03-empty-submit.png",
+    caption="Submitted with no name to test validation. Got an inline 'Name is required' error and the field highlighted in red. Good.",
 )
 
-# ... 5 more slides through the flow ...
+# … more slides through the flow …
 
-# Found a real bug
 slideshow_add_slide(
-  slideshow_id="ss_abc123",
-  media_path="/tmp/09-bug-redirect.png",
-  caption="Created a project named 'Test 1'. The success toast fired, but the redirect went to /projects/undefined instead of /projects/<id>. Bug: the response payload appears to be missing the 'id' field."
+    slideshow_id="ss_abc123",
+    media_path="/tmp/09-bug-redirect.png",
+    caption="Created a project named 'Test 1'. Success toast fired, but the redirect went to /projects/undefined instead of /projects/<id>. Bug: response payload appears to be missing the 'id' field.",
 )
 
-# Wrap with a summary
 slideshow_set_summary(
-  slideshow_id="ss_abc123",
-  summary="Tested project creation end-to-end on staging. Form validation passed all five edge cases. One real bug: post-create redirect lands at /projects/undefined when the response is missing the id field (slide 9). Two minor copy issues flagged in slides 5 and 7."
+    slideshow_id="ss_abc123",
+    summary="Tested project creation end-to-end on staging. Form validation passed all five edge cases. One real bug: post-create redirect lands at /projects/undefined when the response is missing the id field (slide 9). Two minor copy issues flagged in slides 5 and 7.",
 )
 ```
 
-The user gets a single share URL. They can paste it into Slack, a Linear
-ticket, a PR description, or a cold-app message. That URL is the artifact.
-The captions are what makes it worth opening.
+The user gets one share URL. They paste it into Slack, a Linear ticket, a PR description, a cold-app message. **The URL is the artifact. The captions are what makes it worth opening.**
