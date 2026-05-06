@@ -46,9 +46,9 @@ agentclip slideshow create --title "Signup QA" --description "fresh-user flow"
 agentclip slideshow add <slideshow_id> /tmp/shot1.png --caption "Clicked Sign Up. Form posted."
 agentclip slideshow summary <slideshow_id> "Signup passed. One real bug at slide 4."
 
-# Recover or rotate the edit URL later:
-agentclip edit-url <share_token>
-agentclip rotate <share_token>
+# Manage what you've made:
+agentclip slideshow list
+agentclip slideshow delete <slideshow_id>
 ```
 
 ## MCP install (Claude Desktop, Claude Code, Cursor)

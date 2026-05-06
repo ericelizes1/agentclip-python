@@ -1,0 +1,32 @@
+# Triggered by `git push --tags` after `just release X.Y.Z`.
+#
+# Uses PyPI Trusted Publishing (OIDC) — no PYPI token stored in
+# GitHub Secrets. PyPI verifies the workflow's identity at publish
+# time. Configure once at:
+#   https://pypi.org/manage/project/agentclip/settings/publishing/
+#   owner: ericelizes1, repo: agentclip-python, workflow: release.yml
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  id-token: write    # OIDC exchange with PyPI
+  contents: write    # gh release create
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --all-extras
+      - run: uv run pytest tests/ -q
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
