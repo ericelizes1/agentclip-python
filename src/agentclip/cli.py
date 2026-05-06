@@ -222,6 +222,39 @@ def slideshow_summary(
     _print(result.model_dump(), as_json=as_json, summary='summary set.')
 
 
+# ---------- slideshow delete ----------
+
+
+@slideshow_app.command('delete')
+def slideshow_delete(
+    slideshow_id: str = typer.Argument(...),
+    yes: bool = typer.Option(
+        False,
+        '--yes',
+        '-y',
+        help='Skip the confirmation prompt.',
+    ),
+    as_json: bool = typer.Option(False, '--json'),
+) -> None:
+    '''Delete a slideshow and all its slides. Cannot be undone.'''
+    token = _require_token(slideshow_id)
+    if not yes and not typer.confirm(
+        f'Delete slideshow {slideshow_id}? This cannot be undone.',
+        default=False,
+    ):
+        typer.echo('aborted.')
+        raise typer.Exit(code=1)
+
+    try:
+        with AgentClipClient() as client:
+            client.delete_slideshow(slideshow_id, write_token=token)
+    except AgentClipError as exc:
+        raise _bail(str(exc), body=exc.body) from exc
+
+    StateStore().forget_slideshow(slideshow_id)
+    _print({'slideshow_id': slideshow_id, 'deleted': True}, as_json=as_json, summary='deleted.')
+
+
 # ---------- slideshow list ----------
 
 

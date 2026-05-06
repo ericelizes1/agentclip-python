@@ -117,6 +117,22 @@ class StateStore:
     def all_slideshows(self) -> dict[str, dict]:
         return dict(self._read().get('slideshows', {}))
 
+    def forget_slideshow(self, slideshow_id: str) -> bool:
+        '''Drop the cached entry for ``slideshow_id``.
+
+        Returns True when an entry existed and was removed, False when
+        nothing was cached. Used after ``delete_slideshow`` to keep the
+        local cache from accumulating stale tokens for rows that no
+        longer exist on the backend.
+        '''
+        data = self._read()
+        slideshows = data.get('slideshows', {})
+        if slideshow_id not in slideshows:
+            return False
+        del slideshows[slideshow_id]
+        self._write(data)
+        return True
+
     # ----- whoami: optional creator credit applied to every new clip -----
 
     def get_whoami(self) -> dict | None:

@@ -363,3 +363,36 @@ def test_create_slideshow_handles_whoami_with_no_url(tmp_path):
 
     assert captured['body']['created_by'] == 'Eric Elizes'
     assert 'created_by_url' not in captured['body']
+
+
+# ---------- delete_slideshow ----------
+
+
+def test_delete_slideshow_sends_bearer_and_returns_on_204():
+    captured: dict = {}
+
+    def handler(request):
+        captured['method'] = request.method
+        captured['url'] = str(request.url)
+        captured['auth'] = request.headers.get('authorization')
+        return httpx.Response(204)
+
+    client = make_client(handler)
+    client.delete_slideshow('ss_1', write_token='wt')
+
+    assert captured['method'] == 'DELETE'
+    assert captured['url'].endswith('/api/slideshow/ss_1/')
+    assert captured['auth'] == 'Bearer wt'
+
+
+def test_delete_slideshow_treats_404_as_already_gone():
+    '''404 should not raise — the caller's intent is "make it not exist".'''
+    client = make_client(lambda r: httpx.Response(404, text='not found'))
+    client.delete_slideshow('ss_missing', write_token='wt')
+
+
+def test_delete_slideshow_raises_on_other_errors():
+    client = make_client(lambda r: httpx.Response(500, text='boom'))
+    with pytest.raises(AgentClipError) as exc_info:
+        client.delete_slideshow('ss_1', write_token='wt')
+    assert exc_info.value.status_code == 500

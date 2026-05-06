@@ -224,6 +224,26 @@ class AgentClipClient:
         )
         return SlideshowPatched.model_validate(self._parse(response, expected=200))
 
+    def delete_slideshow(self, slideshow_id: str, *, write_token: str) -> None:
+        '''Delete a slideshow and all its slides. Auth: Bearer <write_token>.
+
+        Idempotent from the caller's view: a 404 is treated as "already
+        gone" and does not raise. Anything else surfaces as AgentClipError.
+        Slide media in R2 is not cleaned up server-side (v0.1 limitation);
+        the database row and its FK-cascaded slides are removed.
+        '''
+        response = self._http.delete(
+            f'{self.base_url}/api/slideshow/{slideshow_id}/',
+            headers=_auth(write_token),
+        )
+        if response.status_code in (204, 404):
+            return
+        raise AgentClipError(
+            f'agentclip backend returned {response.status_code} (expected 204)',
+            status_code=response.status_code,
+            body=response.text,
+        )
+
     def _parse(self, response: httpx.Response, *, expected: int) -> dict[str, Any]:
         '''Parse a JSON response and surface backend errors with their bodies.
 
