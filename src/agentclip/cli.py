@@ -1,4 +1,4 @@
-'''The ``agentclip`` Typer CLI.
+"""The ``agentclip`` Typer CLI.
 
 Mirrors the MCP tool surface for humans, CI, and any agent runtime
 that doesn't speak MCP yet. Every command is a thin wrapper over
@@ -13,7 +13,7 @@ Two non-tool commands round it out:
 Output goes to stdout as JSON when --json is passed, otherwise as a
 short human-readable summary. Agents that want to parse output should
 use --json explicitly; humans get the friendly path by default.
-'''
+"""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ _SKIP_LAZY_SETUP = frozenset({'version', 'setup', 'install-skill'})
 
 @app.callback()
 def _lazy_first_run(ctx: typer.Context) -> None:
-    '''Run lazy first-run setup before any subcommand executes.
+    """Run lazy first-run setup before any subcommand executes.
 
     Typer dispatches the subcommand AFTER this callback returns, so
     inserting setup here means a fresh `pip install agentclip` followed
@@ -59,14 +59,14 @@ def _lazy_first_run(ctx: typer.Context) -> None:
 
     Skipped for status-only or setup-adjacent subcommands so they stay
     fast and never recurse on themselves.
-    '''
+    """
     if ctx.invoked_subcommand in _SKIP_LAZY_SETUP:
         return
     ensure_setup()
 
 
 def _print(payload: dict, *, as_json: bool, summary: str | None = None) -> None:
-    '''Single output path so --json behavior stays consistent across commands.'''
+    """Single output path so --json behavior stays consistent across commands."""
     if as_json:
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
     elif summary:
@@ -76,11 +76,11 @@ def _print(payload: dict, *, as_json: bool, summary: str | None = None) -> None:
 
 
 def _bail(message: str, *, body: str | None = None) -> typer.Exit:
-    '''Print a real error to stderr and exit non-zero.
+    """Print a real error to stderr and exit non-zero.
 
     Returned (not raised) so call sites read as ``raise _bail(...)``,
     a pattern that lets type-checkers see the control-flow exit.
-    '''
+    """
     typer.echo(f'agentclip: {message}', err=True)
     if body:
         typer.echo(body, err=True)
@@ -98,7 +98,7 @@ def slideshow_create(
     ),
     as_json: bool = typer.Option(False, '--json', help='Emit JSON instead of a summary.'),
 ) -> None:
-    '''Create a new slideshow and cache its write_token locally.'''
+    """Create a new slideshow and cache its write_token locally."""
     try:
         with AgentClipClient() as client:
             result = client.create_slideshow(title=title, description=description)
@@ -128,9 +128,9 @@ def slideshow_create(
     if store.get_whoami() is None and not store.get_flag('credit_nudge_shown'):
         if not as_json:
             typer.echo('')
-            typer.echo("  tip: credit yourself on clips you make.")
+            typer.echo('  tip: credit yourself on clips you make.')
             typer.echo("       agentclip whoami --set 'Your Name' --url https://you.example")
-            typer.echo("       (this hint shows once; clear with `agentclip whoami --skip-tip`)")
+            typer.echo('       (this hint shows once; clear with `agentclip whoami --skip-tip`)')
         store.set_flag('credit_nudge_shown')
 
 
@@ -141,13 +141,15 @@ def slideshow_create(
 def slideshow_add(
     slideshow_id: str = typer.Argument(..., help='ID returned by `agentclip slideshow create`.'),
     media: Path = typer.Argument(
-        ..., exists=True, dir_okay=False,
+        ...,
+        exists=True,
+        dir_okay=False,
         help='Path to image or video clip (PNG, JPEG, GIF, WebP, MP4, WebM, MOV).',
     ),
     caption: str = typer.Option(..., '--caption', '-c', help='Caption for this slide.'),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
-    '''Append a slide to an existing slideshow. Accepts image or video clip.'''
+    """Append a slide to an existing slideshow. Accepts image or video clip."""
     token = _require_token(slideshow_id)
     try:
         with AgentClipClient() as client:
@@ -172,13 +174,17 @@ def slideshow_update(
     slideshow_id: str = typer.Argument(...),
     position: int = typer.Argument(..., help='1-based slide position to replace.'),
     media: Path | None = typer.Option(
-        None, '--media', '-m', exists=True, dir_okay=False,
+        None,
+        '--media',
+        '-m',
+        exists=True,
+        dir_okay=False,
         help='New media file (image or video).',
     ),
     caption: str | None = typer.Option(None, '--caption', '-c', help='New caption.'),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
-    '''Replace the media and/or caption of an existing slide.'''
+    """Replace the media and/or caption of an existing slide."""
     if media is None and caption is None:
         raise _bail('pass --media, --caption, or both')
 
@@ -211,7 +217,7 @@ def slideshow_summary(
     summary: str = typer.Argument(..., help='TL;DR of the QA run, under 80 words.'),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
-    '''Set the slideshow's summary near the end of an agent run.'''
+    """Set the slideshow's summary near the end of an agent run."""
     token = _require_token(slideshow_id)
     try:
         with AgentClipClient() as client:
@@ -236,7 +242,7 @@ def slideshow_delete(
     ),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
-    '''Delete a slideshow and all its slides. Cannot be undone.'''
+    """Delete a slideshow and all its slides. Cannot be undone."""
     token = _require_token(slideshow_id)
     if not yes and not typer.confirm(
         f'Delete slideshow {slideshow_id}? This cannot be undone.',
@@ -262,7 +268,7 @@ def slideshow_delete(
 def slideshow_list(
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
-    '''List slideshows whose write_tokens are cached on this machine.'''
+    """List slideshows whose write_tokens are cached on this machine."""
     entries = StateStore().all_slideshows()
     redacted = {
         sid: {k: v for k, v in entry.items() if k != 'write_token'}
@@ -296,12 +302,12 @@ def install_skill(
         False, '--force', help='Overwrite an existing SKILL.md without prompting.'
     ),
 ) -> None:
-    '''Install the bundled agentclip skill so agents pick up the prompt guidance.
+    """Install the bundled agentclip skill so agents pick up the prompt guidance.
 
     The skill is what makes generated slideshows actually good. It teaches
     the agent when to screenshot, how to caption, and how to write the
     summary. Reinstall after upgrading the package to pull in updates.
-    '''
+    """
     skill_source = resources.files('agentclip.skill').joinpath('SKILL.md')
     if not skill_source.is_file():
         raise _bail('SKILL.md not bundled with this install. Open a github issue.')
@@ -342,22 +348,24 @@ def whoami(
         None, '--set', help='Set the creator credit name displayed on clips you make.'
     ),
     url: str | None = typer.Option(
-        None, '--url', help='Optional URL the credit links to (portfolio, GitHub, LinkedIn).',
+        None,
+        '--url',
+        help='Optional URL the credit links to (portfolio, GitHub, LinkedIn).',
     ),
-    clear: bool = typer.Option(
-        False, '--clear', help='Remove the stored creator credit.'
-    ),
+    clear: bool = typer.Option(False, '--clear', help='Remove the stored creator credit.'),
     skip_tip: bool = typer.Option(
-        False, '--skip-tip', help='Suppress the first-create credit nudge without setting a credit.',
+        False,
+        '--skip-tip',
+        help='Suppress the first-create credit nudge without setting a credit.',
     ),
 ) -> None:
-    '''Manage the creator credit applied to every clip you create.
+    """Manage the creator credit applied to every clip you create.
 
     Without flags: prints the stored credit (or "no credit set").
     With --set: stores the credit so every future slideshow_create
     auto-applies it. With --clear: removes the stored credit.
     With --skip-tip: marks the first-create nudge as shown.
-    '''
+    """
     store = StateStore()
 
     if clear:
@@ -398,19 +406,24 @@ def whoami(
 @app.command('setup')
 def setup(
     force: bool = typer.Option(
-        False, '--force', help='Re-run setup even if the marker exists.',
+        False,
+        '--force',
+        help='Re-run setup even if the marker exists.',
     ),
     quiet: bool = typer.Option(
-        False, '--quiet', '-q', help='Suppress per-step status output.',
+        False,
+        '--quiet',
+        '-q',
+        help='Suppress per-step status output.',
     ),
 ) -> None:
-    '''Run first-run setup explicitly.
+    """Run first-run setup explicitly.
 
     Lazy first-run does this automatically the first time you invoke
     any other subcommand, so most users will never call this directly.
     Re-run with --force after upgrading the package to refresh the
     bundled skill or after changing browser extras.
-    '''
+    """
     ran = run_setup(force=force, quiet=quiet)
     if not ran and not quiet:
         typer.echo('  (pass --force to re-run anyway.)')
@@ -421,7 +434,7 @@ def setup(
 
 @app.command('version')
 def version() -> None:
-    '''Print the installed agentclip version.'''
+    """Print the installed agentclip version."""
     typer.echo(__version__)
 
 
@@ -429,8 +442,7 @@ def _require_token(slideshow_id: str) -> str:
     token = StateStore().get_token(slideshow_id)
     if token is None:
         raise _bail(
-            f'no write_token cached for slideshow {slideshow_id!r}. '
-            f'Was it created on this machine?'
+            f'no write_token cached for slideshow {slideshow_id!r}. Was it created on this machine?'
         )
     return token
 

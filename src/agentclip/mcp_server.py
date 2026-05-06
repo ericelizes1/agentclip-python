@@ -1,4 +1,4 @@
-'''MCP server exposing agentclip tools to any agent runtime that speaks MCP.
+"""MCP server exposing agentclip tools to any agent runtime that speaks MCP.
 
 This module is deliberately thin: every tool is a one-screen wrapper
 that calls into the SDK and persists any returned credentials via the
@@ -12,7 +12,7 @@ Run with::
 
 It speaks stdio MCP, the only transport every agent runtime supports
 today. SSE/HTTP transports can come later if a deployment needs them.
-'''
+"""
 
 from __future__ import annotations
 
@@ -25,12 +25,12 @@ from .sdk import AgentClipClient
 from .state import StateStore
 
 mcp = FastMCP('agentclip')
-'''The single FastMCP instance for this server.
+"""The single FastMCP instance for this server.
 
 Imported by tests and by the ``agentclip-mcp`` console script. Tools are
 registered at import time via the @mcp.tool decorators below, which
 keeps the server definition self-contained in this one module.
-'''
+"""
 
 
 @mcp.tool()
@@ -54,12 +54,12 @@ def slideshow_create(
         ),
     ] = None,
 ) -> dict:
-    '''Start a new slideshow. Returns the id, share URL, and write token.
+    """Start a new slideshow. Returns the id, share URL, and write token.
 
     The write token is cached locally; subsequent tools (slideshow_add_slide,
     slideshow_update_slide, slideshow_set_summary) will pick it up
     automatically when given the returned slideshow id.
-    '''
+    """
     client = AgentClipClient()
     try:
         result = client.create_slideshow(title=title, description=description)
@@ -107,12 +107,12 @@ def slideshow_add_slide(
         ),
     ],
 ) -> dict:
-    '''Append a media clip + caption as the next slide.
+    """Append a media clip + caption as the next slide.
 
     Accepts both static images and short video clips. The backend
     classifies the upload by its Content-Type and the viewer renders
     image clips with <img> and video clips with <video>.
-    '''
+    """
     write_token = _resolve_token(slideshow_id)
     client = AgentClipClient()
     try:
@@ -141,8 +141,7 @@ def slideshow_update_slide(
         str | None,
         Field(
             description=(
-                'New media path (image or short video). Omit to leave the '
-                'existing media in place.'
+                'New media path (image or short video). Omit to leave the existing media in place.'
             )
         ),
     ] = None,
@@ -153,10 +152,10 @@ def slideshow_update_slide(
         ),
     ] = None,
 ) -> dict:
-    '''Replace the image and/or caption of an existing slide.
+    """Replace the image and/or caption of an existing slide.
 
     Prefer this over piling up corrected slides; see SKILL.md.
-    '''
+    """
     write_token = _resolve_token(slideshow_id)
     client = AgentClipClient()
     try:
@@ -188,7 +187,7 @@ def slideshow_set_summary(
         ),
     ],
 ) -> dict:
-    '''Set the slideshow summary. Call once near the end of the run.'''
+    """Set the slideshow summary. Call once near the end of the run."""
     write_token = _resolve_token(slideshow_id)
     client = AgentClipClient()
     try:
@@ -203,12 +202,12 @@ def slideshow_set_summary(
 
 
 def _resolve_token(slideshow_id: str) -> str:
-    '''Look up the write_token for ``slideshow_id`` from the local state file.
+    """Look up the write_token for ``slideshow_id`` from the local state file.
 
     Surfaced as its own helper because every mutation tool needs the same
     "no token? give the user a real error" treatment, and the agent reads
     that error message verbatim, so it has to be useful, not a traceback.
-    '''
+    """
     token = StateStore().get_token(slideshow_id)
     if token is None:
         raise ValueError(
@@ -220,7 +219,7 @@ def _resolve_token(slideshow_id: str) -> str:
 
 
 def main() -> None:
-    '''Entry point for the ``agentclip-mcp`` console script.'''
+    """Entry point for the ``agentclip-mcp`` console script."""
     mcp.run()
 
 

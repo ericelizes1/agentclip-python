@@ -1,4 +1,4 @@
-'''Local persistence for slideshow write_tokens.
+"""Local persistence for slideshow write_tokens.
 
 The hosted backend has no accounts in v1: a slideshow is mutable iff
 the caller can present its write_token. That means losing the token
@@ -20,7 +20,7 @@ Format::
         }
       }
     }
-'''
+"""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from pathlib import Path
 
 
 def default_state_path() -> Path:
-    '''Resolve the state file path, honoring AGENTCLIP_STATE_PATH when set.'''
+    """Resolve the state file path, honoring AGENTCLIP_STATE_PATH when set."""
     override = os.environ.get('AGENTCLIP_STATE_PATH')
     if override:
         return Path(override).expanduser()
@@ -40,13 +40,13 @@ def default_state_path() -> Path:
 
 
 class StateStore:
-    '''JSON-backed key-value store for write_tokens.
+    """JSON-backed key-value store for write_tokens.
 
     Reads are lazy and re-read each call: the file is small, and other
     processes (a parallel CLI invocation, the MCP server) may be writing
     to it. Writes are atomic via tempfile + rename, so a kill mid-write
     cannot leave a partial file on disk.
-    '''
+    """
 
     def __init__(self, path: Path | None = None):
         self.path = path or default_state_path()
@@ -95,12 +95,12 @@ class StateStore:
         share_url: str,
         title: str | None = None,
     ) -> None:
-        '''Cache the write_token for ``slideshow_id``.
+        """Cache the write_token for ``slideshow_id``.
 
         Idempotent: re-remembering the same id overwrites the prior entry,
         which is what the user wants when they re-create with the same
         title and the backend hands back a new id+token pair.
-        '''
+        """
         data = self._read()
         data.setdefault('slideshows', {})[slideshow_id] = {
             'write_token': write_token,
@@ -118,13 +118,13 @@ class StateStore:
         return dict(self._read().get('slideshows', {}))
 
     def forget_slideshow(self, slideshow_id: str) -> bool:
-        '''Drop the cached entry for ``slideshow_id``.
+        """Drop the cached entry for ``slideshow_id``.
 
         Returns True when an entry existed and was removed, False when
         nothing was cached. Used after ``delete_slideshow`` to keep the
         local cache from accumulating stale tokens for rows that no
         longer exist on the backend.
-        '''
+        """
         data = self._read()
         slideshows = data.get('slideshows', {})
         if slideshow_id not in slideshows:
@@ -136,25 +136,25 @@ class StateStore:
     # ----- whoami: optional creator credit applied to every new clip -----
 
     def get_whoami(self) -> dict | None:
-        '''Return the stored creator credit, or None if not set.
+        """Return the stored creator credit, or None if not set.
 
         Shape: ``{'name': str, 'url': str}``. ``url`` may be empty when the
         user set a name but no URL; the SDK passes empty strings through
         unchanged so the backend does its own URL validation.
-        '''
+        """
         data = self._read().get('whoami')
         if not data or not data.get('name'):
             return None
         return {'name': data['name'], 'url': data.get('url', '')}
 
     def set_whoami(self, name: str, url: str | None = None) -> None:
-        '''Store the creator credit. Overwrites any prior entry.'''
+        """Store the creator credit. Overwrites any prior entry."""
         data = self._read()
         data['whoami'] = {'name': name, 'url': url or ''}
         self._write(data)
 
     def clear_whoami(self) -> None:
-        '''Remove the creator credit. No-op if none was set.'''
+        """Remove the creator credit. No-op if none was set."""
         data = self._read()
         if 'whoami' in data:
             del data['whoami']
@@ -163,15 +163,15 @@ class StateStore:
     # ----- nudge flags: one-time CLI hints -----
 
     def get_flag(self, key: str) -> bool:
-        '''Return True if a one-time CLI flag has been raised.
+        """Return True if a one-time CLI flag has been raised.
 
         Used by the CLI's first-create nudge to fire the credit-yourself
         tip exactly once per machine. Never errors when the key is absent.
-        '''
+        """
         return bool(self._read().get('flags', {}).get(key))
 
     def set_flag(self, key: str) -> None:
-        '''Raise a one-time CLI flag.'''
+        """Raise a one-time CLI flag."""
         data = self._read()
         data.setdefault('flags', {})[key] = True
         self._write(data)

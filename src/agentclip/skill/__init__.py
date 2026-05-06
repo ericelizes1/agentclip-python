@@ -1,1 +1,1 @@
-'''Bundled Claude skill files. SKILL.md is shipped via importlib.resources.'''
+"""Bundled Claude skill files. SKILL.md is shipped via importlib.resources."""

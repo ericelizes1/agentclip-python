@@ -1,9 +1,9 @@
-'''Wire-format models for talking to the agentclip backend.
+"""Wire-format models for talking to the agentclip backend.
 
 Kept separate from the public SDK surface so we can evolve transport
 shapes (multipart vs JSON, field renames the backend may do) without
 churning the SDK call signatures users write against.
-'''
+"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class SlideshowCreated(BaseModel):
-    '''Response from POST /api/slideshow/.'''
+    """Response from POST /api/slideshow/."""
 
     id: str
     share_url: str
@@ -19,7 +19,7 @@ class SlideshowCreated(BaseModel):
 
 
 class SlideAdded(BaseModel):
-    '''Response from POST /api/slideshow/<id>/slides/.'''
+    """Response from POST /api/slideshow/<id>/slides/."""
 
     id: int
     position: int
@@ -28,7 +28,7 @@ class SlideAdded(BaseModel):
 
 
 class SlideUpdated(BaseModel):
-    '''Response from PATCH /api/slideshow/<id>/slides/<position>/.'''
+    """Response from PATCH /api/slideshow/<id>/slides/<position>/."""
 
     id: int
     position: int
@@ -37,7 +37,7 @@ class SlideUpdated(BaseModel):
 
 
 class SlideshowPatched(BaseModel):
-    '''Response from PATCH /api/slideshow/<id>/.'''
+    """Response from PATCH /api/slideshow/<id>/."""
 
     id: str
     title: str | None = None

@@ -1,11 +1,11 @@
-'''Tests for AgentClipClient using httpx.MockTransport.
+"""Tests for AgentClipClient using httpx.MockTransport.
 
 We inject a MockTransport via the http_client= parameter to exercise
 real request shapes without hitting a network. Each test asserts both
 the response handling and the wire-format the SDK actually sends —
 because the wire-format is the contract with the Django backend, and
 silent regressions there would be invisible in the SDK's own surface.
-'''
+"""
 
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ from agentclip.state import StateStore
 
 
 def make_client(handler, state_store: StateStore | None = None) -> AgentClipClient:
-    '''Wire an AgentClipClient up to a MockTransport handler.
+    """Wire an AgentClipClient up to a MockTransport handler.
 
     Tests get a per-call isolated StateStore by default so a real
     ~/.agentclip/state.json on the developer's machine cannot bleed
     a stored whoami into the request body and break wire-shape
     assertions. Pass ``state_store=`` to inject a pre-configured one
     (e.g., to test the whoami auto-application path).
-    '''
+    """
     http = httpx.Client(transport=httpx.MockTransport(handler))
     if state_store is None:
         # tempfile.mkdtemp because tmp_path is a pytest fixture and we
@@ -167,9 +167,7 @@ def test_update_slide_caption_only_sends_json_patch():
             },
         )
 
-    result = make_client(handler).update_slide(
-        'ss_x', 3, caption='fixed', write_token='wt'
-    )
+    result = make_client(handler).update_slide('ss_x', 3, caption='fixed', write_token='wt')
 
     assert captured['method'] == 'PATCH'
     assert 'application/json' in captured['content_type']
@@ -226,9 +224,7 @@ def test_set_summary_patches_slideshow_with_auth():
             json={'id': 'ss_x', 'summary': 'wrap'},
         )
 
-    result = make_client(handler).set_summary(
-        'ss_x', summary='wrap', write_token='wt_secret'
-    )
+    result = make_client(handler).set_summary('ss_x', summary='wrap', write_token='wt_secret')
 
     assert captured['method'] == 'PATCH'
     assert captured['url'] == 'https://agentclip.test/api/slideshow/ss_x/'
@@ -239,9 +235,7 @@ def test_set_summary_patches_slideshow_with_auth():
 
 def test_patch_slideshow_no_fields_raises():
     with pytest.raises(AgentClipError, match='at least one field'):
-        make_client(lambda r: httpx.Response(500)).patch_slideshow(
-            'ss_x', write_token='wt'
-        )
+        make_client(lambda r: httpx.Response(500)).patch_slideshow('ss_x', write_token='wt')
 
 
 # ---------- error handling ----------
@@ -262,9 +256,7 @@ def test_base_url_trailing_slash_is_normalized():
 
     def handler(request):
         captured['url'] = str(request.url)
-        return httpx.Response(
-            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
-        )
+        return httpx.Response(201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'})
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
     AgentClipClient(
@@ -279,7 +271,7 @@ def test_base_url_trailing_slash_is_normalized():
 
 
 def _store_with_whoami(tmp_path, name='Eric Elizes', url='https://elizes.dev') -> StateStore:
-    '''Build a StateStore at tmp_path with whoami pre-set.'''
+    """Build a StateStore at tmp_path with whoami pre-set."""
     s = StateStore(path=tmp_path / 'state.json')
     s.set_whoami(name, url)
     return s
@@ -290,9 +282,7 @@ def test_create_slideshow_auto_applies_whoami_when_set(tmp_path):
 
     def handler(request):
         captured['body'] = json.loads(request.content)
-        return httpx.Response(
-            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
-        )
+        return httpx.Response(201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'})
 
     client = make_client(handler, state_store=_store_with_whoami(tmp_path))
     client.create_slideshow(title='hello')
@@ -308,9 +298,7 @@ def test_create_slideshow_caller_overrides_stored_whoami(tmp_path):
 
     def handler(request):
         captured['body'] = json.loads(request.content)
-        return httpx.Response(
-            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
-        )
+        return httpx.Response(201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'})
 
     client = make_client(handler, state_store=_store_with_whoami(tmp_path))
     client.create_slideshow(
@@ -325,19 +313,17 @@ def test_create_slideshow_caller_overrides_stored_whoami(tmp_path):
 
 
 def test_create_slideshow_omits_created_by_when_no_whoami(tmp_path):
-    '''Empty state store means the request body has no created_by fields.
+    """Empty state store means the request body has no created_by fields.
 
     Sending '' would persist as empty strings; omitting lets the backend
     default to its own empty-string columns. Either works, but omitting
     is cleaner on the wire.
-    '''
+    """
     captured: dict = {}
 
     def handler(request):
         captured['body'] = json.loads(request.content)
-        return httpx.Response(
-            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
-        )
+        return httpx.Response(201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'})
 
     client = make_client(handler)  # default isolated, empty store
     client.create_slideshow(title='hello')
@@ -347,14 +333,12 @@ def test_create_slideshow_omits_created_by_when_no_whoami(tmp_path):
 
 
 def test_create_slideshow_handles_whoami_with_no_url(tmp_path):
-    '''Name-only whoami sends created_by but omits created_by_url.'''
+    """Name-only whoami sends created_by but omits created_by_url."""
     captured: dict = {}
 
     def handler(request):
         captured['body'] = json.loads(request.content)
-        return httpx.Response(
-            201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'}
-        )
+        return httpx.Response(201, json={'id': 'ss_1', 'share_url': 'x', 'write_token': 'wt'})
 
     store = StateStore(path=tmp_path / 'state.json')
     store.set_whoami('Eric Elizes')  # url omitted
@@ -386,7 +370,7 @@ def test_delete_slideshow_sends_bearer_and_returns_on_204():
 
 
 def test_delete_slideshow_treats_404_as_already_gone():
-    '''404 should not raise — the caller's intent is "make it not exist".'''
+    """404 should not raise — the caller's intent is "make it not exist"."""
     client = make_client(lambda r: httpx.Response(404, text='not found'))
     client.delete_slideshow('ss_missing', write_token='wt')
 

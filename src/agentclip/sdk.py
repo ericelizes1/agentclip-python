@@ -1,4 +1,4 @@
-'''Real implementation of the agentclip client surface.
+"""Real implementation of the agentclip client surface.
 
 The SDK is the source of truth. The CLI and MCP server are thin wrappers
 on top; anything they can do, you can do by importing this module.
@@ -12,7 +12,7 @@ Design notes:
   decides where to persist it. See state.py for the default.
 - We never raise on 4xx without context. httpx's raise_for_status() loses
   the response body, which is exactly the part the user needs.
-'''
+"""
 
 from __future__ import annotations
 
@@ -27,11 +27,11 @@ from ._models import SlideAdded, SlideshowCreated, SlideshowPatched, SlideUpdate
 from .state import StateStore
 
 DEFAULT_BASE_URL = 'https://agentclip.dev'
-'''Public hosted backend. Override with AGENTCLIP_BASE_URL or base_url=.'''
+"""Public hosted backend. Override with AGENTCLIP_BASE_URL or base_url=."""
 
 
 class AgentClipError(Exception):
-    '''Base class for SDK errors. Carries the HTTP response body when present.'''
+    """Base class for SDK errors. Carries the HTTP response body when present."""
 
     def __init__(self, message: str, *, status_code: int | None = None, body: str | None = None):
         super().__init__(message)
@@ -40,7 +40,7 @@ class AgentClipError(Exception):
 
 
 class AgentClipClient:
-    '''HTTP client for the agentclip backend.
+    """HTTP client for the agentclip backend.
 
     Typical usage::
 
@@ -50,7 +50,7 @@ class AgentClipClient:
 
     The client is reusable across many slideshows. Resolve the base URL
     once; persist write_tokens however you like.
-    '''
+    """
 
     def __init__(
         self,
@@ -87,7 +87,7 @@ class AgentClipClient:
         created_by: str | None = None,
         created_by_url: str | None = None,
     ) -> SlideshowCreated:
-        '''Create a new slideshow. Returns the id, share URL, and write token.
+        """Create a new slideshow. Returns the id, share URL, and write token.
 
         The write token is the only credential that authorizes future
         mutations on this slideshow. Lose it and the slideshow is frozen.
@@ -101,7 +101,7 @@ class AgentClipClient:
         - When neither is passed and no whoami is stored, the fields are
           omitted from the request body so the backend stores empty
           strings (not nulls).
-        '''
+        """
         payload: dict[str, Any] = {}
         if title is not None:
             payload['title'] = title
@@ -131,11 +131,11 @@ class AgentClipClient:
         caption: str,
         write_token: str,
     ) -> SlideAdded:
-        '''Append a slide. The slide's ``position`` is assigned by the backend.
+        """Append a slide. The slide's ``position`` is assigned by the backend.
 
         Captions and images are uploaded together as one multipart request
         so a network failure cannot leave a slide with one and not the other.
-        '''
+        """
         image = _resolve_media(media_path)
         with image.open('rb') as fh:
             files = {'media': (image.name, fh, _guess_mime(image))}
@@ -157,11 +157,11 @@ class AgentClipClient:
         caption: str | None = None,
         write_token: str,
     ) -> SlideUpdated:
-        '''Replace fields on an existing slide. Image, caption, or both.
+        """Replace fields on an existing slide. Image, caption, or both.
 
         At least one of ``media_path`` and ``caption`` must be provided.
         A no-op PATCH would silently succeed and waste a round-trip.
-        '''
+        """
         if media_path is None and caption is None:
             raise AgentClipError('update_slide requires media_path and/or caption')
 
@@ -190,11 +190,11 @@ class AgentClipClient:
         summary: str,
         write_token: str,
     ) -> SlideshowPatched:
-        '''Set the slideshow's TL;DR. Called near the end of an agent run.
+        """Set the slideshow's TL;DR. Called near the end of an agent run.
 
         Title and description live on the same endpoint; if you ever need
         to mutate them, drop down to ``patch_slideshow``.
-        '''
+        """
         return self.patch_slideshow(slideshow_id, summary=summary, write_token=write_token)
 
     def patch_slideshow(
@@ -206,7 +206,7 @@ class AgentClipClient:
         summary: str | None = None,
         write_token: str,
     ) -> SlideshowPatched:
-        '''Lower-level PATCH. ``set_summary`` is the named shortcut callers want.'''
+        """Lower-level PATCH. ``set_summary`` is the named shortcut callers want."""
         payload: dict[str, str] = {}
         if title is not None:
             payload['title'] = title
@@ -225,13 +225,13 @@ class AgentClipClient:
         return SlideshowPatched.model_validate(self._parse(response, expected=200))
 
     def delete_slideshow(self, slideshow_id: str, *, write_token: str) -> None:
-        '''Delete a slideshow and all its slides. Auth: Bearer <write_token>.
+        """Delete a slideshow and all its slides. Auth: Bearer <write_token>.
 
         Idempotent from the caller's view: a 404 is treated as "already
         gone" and does not raise. Anything else surfaces as AgentClipError.
         Slide media in R2 is not cleaned up server-side (v0.1 limitation);
         the database row and its FK-cascaded slides are removed.
-        '''
+        """
         response = self._http.delete(
             f'{self.base_url}/api/slideshow/{slideshow_id}/',
             headers=_auth(write_token),
@@ -245,12 +245,12 @@ class AgentClipClient:
         )
 
     def _parse(self, response: httpx.Response, *, expected: int) -> dict[str, Any]:
-        '''Parse a JSON response and surface backend errors with their bodies.
+        """Parse a JSON response and surface backend errors with their bodies.
 
         The hosted backend returns JSON error envelopes; we re-raise them
         as AgentClipError so callers can show the user something useful
         instead of a stripped-down "HTTP 400" with no detail.
-        '''
+        """
         if response.status_code != expected:
             raise AgentClipError(
                 f'agentclip backend returned {response.status_code} (expected {expected})',
@@ -268,12 +268,12 @@ class AgentClipClient:
 
 
 def _resolve_media(path: str | os.PathLike[str]) -> Path:
-    '''Validate a media path before we try to upload it.
+    """Validate a media path before we try to upload it.
 
     Failing at the SDK boundary gives a much better error than letting
     httpx blow up mid-multipart-stream. Accepts both image and video
     paths; the backend classifies by Content-Type at upload.
-    '''
+    """
     resolved = Path(path).expanduser().resolve()
     if not resolved.exists():
         raise AgentClipError(f'media not found: {resolved}')
@@ -283,16 +283,16 @@ def _resolve_media(path: str | os.PathLike[str]) -> Path:
 
 
 def _guess_mime(path: Path) -> str:
-    '''Best-effort MIME type for the multipart upload.
+    """Best-effort MIME type for the multipart upload.
 
     Django + django-storages will sniff the body itself, so falling back
     to application/octet-stream is safe; we set a real type when we can
     so users see correct previews in places like image-aware logging.
-    '''
+    """
     guessed, _ = mimetypes.guess_type(path.name)
     return guessed or 'application/octet-stream'
 
 
 def _auth(write_token: str) -> dict[str, str]:
-    '''Bearer-token header. Centralized so the format stays consistent.'''
+    """Bearer-token header. Centralized so the format stays consistent."""
     return {'Authorization': f'Bearer {write_token}'}

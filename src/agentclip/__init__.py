@@ -1,4 +1,4 @@
-'''agentclip: turn AI agent QA runs into shareable slideshows.'''
+"""agentclip: turn AI agent QA runs into shareable slideshows."""
 
 from .sdk import DEFAULT_BASE_URL, AgentClipClient, AgentClipError
 

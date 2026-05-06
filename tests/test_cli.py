@@ -1,4 +1,4 @@
-'''CLI command coverage for agentclip whoami and the first-create nudge.
+"""CLI command coverage for agentclip whoami and the first-create nudge.
 
 Uses Typer's CliRunner against a per-test isolated state.json so the
 developer's real ~/.agentclip/state.json never leaks into assertions
@@ -7,7 +7,7 @@ and tests never write to the real one.
 The slideshow create command path (and its nudge) is covered with a
 mocked HTTP backend via the same MockTransport seam as the SDK tests;
 we are exercising the CLI's surrounding behavior, not the wire shape.
-'''
+"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from agentclip.state import StateStore
 
 @pytest.fixture
 def isolated_state(tmp_path, monkeypatch):
-    '''Point AGENTCLIP_STATE_PATH at tmp_path so the CLI uses an isolated store.'''
+    """Point AGENTCLIP_STATE_PATH at tmp_path so the CLI uses an isolated store."""
     path = tmp_path / 'state.json'
     monkeypatch.setenv('AGENTCLIP_STATE_PATH', str(path))
     return StateStore(path=path)
@@ -77,10 +77,10 @@ def test_whoami_skip_tip_suppresses_nudge(isolated_state):
 
 
 def test_first_create_nudge_fires_once(isolated_state, monkeypatch):
-    '''Slideshow create with no whoami stored shows the credit hint once.
+    """Slideshow create with no whoami stored shows the credit hint once.
 
     Second create call has the flag raised and stays silent.
-    '''
+    """
     runner = CliRunner()
 
     # Mock the backend: every POST returns a fake created slideshow.
@@ -114,7 +114,7 @@ def test_first_create_nudge_fires_once(isolated_state, monkeypatch):
 
 
 def test_first_create_nudge_skipped_when_whoami_set(isolated_state, monkeypatch):
-    '''If the user already set whoami, the nudge never fires.'''
+    """If the user already set whoami, the nudge never fires."""
     isolated_state.set_whoami('Eric', 'https://elizes.dev')
     runner = CliRunner()
 
