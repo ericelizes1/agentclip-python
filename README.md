@@ -21,8 +21,9 @@ Built in May 2026. Early. APIs may shift before a 1.0 tag.
 
 ```bash
 pip install agentclip
-agentclip install-skill
 ```
+
+That's it. The first time `agentclip` runs, lazy first-run setup wires the bundled Claude Code skill, downloads browser drivers if you'll need them, and writes a marker so subsequent invocations are instant.
 
 Or run with no install:
 
@@ -32,21 +33,22 @@ uvx agentclip --help
 
 ## 60-second example
 
+Ask your agent in plain English (Claude Code, Claude Desktop, or any MCP-aware client):
+
+> QA the signup flow on localhost:3000 and post a clip.
+
+The agent calls `slideshow_create`, captures screenshots after each meaningful action, calls `add_slide` with active-voice captions, then `set_summary` at the end. You get back a share URL plus an edit URL for caption fixes later.
+
+Or use the CLI directly:
+
 ```bash
-# 1. Install the bundled skill into your agent runtime
-agentclip install-skill
-
-# 2. Ask your agent in plain English:
-#    "QA the signup flow on localhost:3000 and post a clip."
-
-# The agent calls slideshow_create, captures screenshots after each
-# meaningful action, calls slideshow_add_slide with active-voice captions,
-# then slideshow_set_summary at the end. You get back a share URL.
-
-# Or use the CLI directly:
 agentclip slideshow create --title "Signup QA" --description "fresh-user flow"
 agentclip slideshow add <slideshow_id> /tmp/shot1.png --caption "Clicked Sign Up. Form posted."
 agentclip slideshow summary <slideshow_id> "Signup passed. One real bug at slide 4."
+
+# Recover or rotate the edit URL later:
+agentclip edit-url <share_token>
+agentclip rotate <share_token>
 ```
 
 ## MCP install (Claude Desktop, Claude Code, Cursor)
@@ -92,7 +94,7 @@ Restart your agent runtime. The four tools below will register automatically.
 
 ## Self-hosting the backend
 
-Companion repo: [`ericelizes1/agentclip`](https://github.com/ericelizes1/agentclip) — the platform monorepo with the Django API and Next.js front-end, plus a `.do/app.yaml` for one-command deploy to DigitalOcean App Platform. Point `AGENTCLIP_BASE_URL` at your domain.
+Companion repo: [`ericelizes1/agentclip`](https://github.com/ericelizes1/agentclip) — the platform monorepo with the Django API and Next.js frontend. Reference deploy is **Fly.io** apps + **Neon** Postgres + **Cloudflare R2** object storage, with secrets sourced from **1Password**; `docker compose up --build` covers any Docker host. Point `AGENTCLIP_BASE_URL` at your domain. Full guide at [docs.agentclip.dev/self-hosting](https://docs.agentclip.dev/self-hosting).
 
 ## Development
 
