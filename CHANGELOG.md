@@ -6,23 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-05
+## [0.1.0] - 2026-05-06
 
-Initial public release.
+First public release. Backend is live at https://agentclip.dev; this package is the canonical client.
 
 ### Added
 
-- Python SDK (`AgentClipClient`) with `create_slideshow`, `add_slide`, `update_slide`, `set_summary`.
-- Typer CLI mirroring the SDK, plus `agentclip install-skill` and `agentclip slideshow list`.
+- Python SDK (`AgentClipClient`) with `create_slideshow`, `add_slide`, `update_slide`, `set_summary`, `delete_slideshow`.
+- Typer CLI mirroring the SDK: `agentclip slideshow create | add | update | summary | delete | list`, plus `agentclip whoami`, `agentclip install-skill`, `agentclip setup`, `agentclip version`.
 - MCP server (`agentclip-mcp`) registering four tools: `slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`.
 - Bundled Claude skill at `src/agentclip/skill/SKILL.md` covering when to screenshot, caption style, narrative arc, summary format, and anti-patterns.
-- Local state store at `~/.agentclip/state.json` for write_token persistence with atomic writes and 0600 permissions.
-- 20-test suite covering SDK wire shapes (httpx MockTransport) and state persistence.
+- Local state store at `~/.agentclip/state.json` for write_token persistence with atomic writes and 0600 permissions. Tracks slideshows, an optional `whoami` creator credit (auto-applied to every new clip), and one-time CLI nudge flags.
+- Lazy first-run setup that wires the bundled Claude skill, downloads browser drivers if `[browser]` is installed, and writes a marker so subsequent invocations are instant. Bypassed for `version`, `setup`, and `install-skill` to keep them fast and non-recursive.
+- Optional `[browser]` extra pulling Playwright for standalone CLI users; agent runtimes that bring their own browser substrate skip it by default.
+- 65-test suite covering SDK wire shapes (httpx MockTransport), state persistence, CLI flow, and lazy setup.
+- `justfile` with `test`, `lint`, `format`, and a guarded `release` recipe that enforces version match + changelog block + clean tree before tagging.
 
 ### Notes
 
 - Default backend URL: `https://agentclip.dev`. Override with `AGENTCLIP_BASE_URL` for self-hosted deploys.
-- v0.1 has no account flow; the `write_token` returned at create time is the only credential.
+- v0.1 has no account flow; the `write_token` returned at create time is the only credential. Cache it via the state store or pass it explicitly.
 
 [Unreleased]: https://github.com/ericelizes1/agentclip-python/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ericelizes1/agentclip-python/releases/tag/v0.1.0
