@@ -33,7 +33,7 @@ negotiable but default to 30 days from confirmation.
 ## What's out of scope (handle via the appropriate upstream)
 
 - Vulnerabilities in pinned dependencies (httpx, typer, mcp, pydantic) — report to those projects directly
-- Issues in the hosted backend deployed at agentclip.dev — see `agentclip-app/SECURITY.md`
+- Issues in the hosted backend deployed at agentclip.dev — see `agentclip/SECURITY.md` in the platform repo
 - Issues in agent runtimes that consume our MCP server (Claude Desktop, Cursor, etc.)
 
 ## Disclosure history

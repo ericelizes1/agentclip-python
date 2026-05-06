@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Discussion / question
-    url: https://github.com/ericelizes/agentclip/discussions
+    url: https://github.com/ericelizes/agentclip-python/discussions
     about: For open-ended questions, ideas, and "is this the right tool for…?"

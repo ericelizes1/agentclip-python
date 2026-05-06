@@ -38,9 +38,9 @@ agentclip = 'agentclip.cli:app'
 agentclip-mcp = 'agentclip.mcp_server:main'
 
 [project.urls]
-Homepage = 'https://github.com/ericelizes/agentclip'
-Repository = 'https://github.com/ericelizes/agentclip'
-Issues = 'https://github.com/ericelizes/agentclip/issues'
+Homepage = 'https://github.com/ericelizes/agentclip-python'
+Repository = 'https://github.com/ericelizes/agentclip-python'
+Issues = 'https://github.com/ericelizes/agentclip-python/issues'
 
 [tool.hatch.build.targets.wheel]
 packages = ['src/agentclip']
