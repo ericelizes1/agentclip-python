@@ -39,6 +39,15 @@ app = typer.Typer(
 slideshow_app = typer.Typer(help='Create and manage slideshows.', no_args_is_help=True)
 app.add_typer(slideshow_app, name='slideshow')
 
+# Curation lives in its own namespace because it operates on a different
+# resource (the home gallery) than slideshow CRUD does. Adding gallery
+# verbs under `slideshow` would drift into a bag-of-everything subcommand.
+gallery_app = typer.Typer(
+    help='Manage which slideshows are featured on the home gallery.',
+    no_args_is_help=True,
+)
+app.add_typer(gallery_app, name='gallery')
+
 
 # Subcommands that we explicitly do NOT want to trigger lazy first-run
 # setup. `version` is a status query, `setup` runs setup itself, and
@@ -226,6 +235,81 @@ def slideshow_summary(
         raise _bail(str(exc), body=exc.body) from exc
 
     _print(result.model_dump(), as_json=as_json, summary='summary set.')
+
+
+# ---------- gallery add / remove ----------
+
+
+@gallery_app.command('add')
+def gallery_add_cmd(
+    share_token: str = typer.Argument(
+        ...,
+        help='URL-safe slug from a slideshow share URL (the part after /s/).',
+    ),
+    position: int = typer.Option(
+        0,
+        '--position',
+        '-p',
+        help='Gallery position; 0 is the home-page hero. Lower sorts first.',
+    ),
+    admin_token: str | None = typer.Option(
+        None,
+        '--admin-token',
+        envvar='AGENTCLIP_ADMIN_TOKEN',
+        help='Bearer token. Falls back to AGENTCLIP_ADMIN_TOKEN env var.',
+    ),
+    as_json: bool = typer.Option(False, '--json'),
+) -> None:
+    """Feature a slideshow in the curated home gallery.
+
+    Requires the deployment's AGENTCLIP_ADMIN_TOKEN. Pass via the
+    --admin-token flag or export AGENTCLIP_ADMIN_TOKEN in your shell.
+    Position 0 lands the slideshow as the home-page hero.
+    """
+    if not admin_token:
+        raise _bail('AGENTCLIP_ADMIN_TOKEN is not set; pass --admin-token or export the env var')
+
+    try:
+        with AgentClipClient() as client:
+            client.feature_slideshow(share_token, position=position, admin_token=admin_token)
+    except AgentClipError as exc:
+        raise _bail(str(exc), body=exc.body) from exc
+
+    payload = {'share_token': share_token, 'position': position, 'is_gallery': True}
+    _print(payload, as_json=as_json, summary=f'added to gallery at position {position}.')
+
+
+@gallery_app.command('remove')
+def gallery_remove_cmd(
+    share_token: str = typer.Argument(...),
+    admin_token: str | None = typer.Option(
+        None,
+        '--admin-token',
+        envvar='AGENTCLIP_ADMIN_TOKEN',
+        help='Bearer token. Falls back to AGENTCLIP_ADMIN_TOKEN env var.',
+    ),
+    as_json: bool = typer.Option(False, '--json'),
+) -> None:
+    """Drop a slideshow from the curated home gallery.
+
+    The slideshow itself stays public at /s/<share_token>; only its
+    home-page placement is removed. The featured_at audit timestamp
+    is preserved so you can answer 'when was this last featured?'.
+    """
+    if not admin_token:
+        raise _bail('AGENTCLIP_ADMIN_TOKEN is not set; pass --admin-token or export the env var')
+
+    try:
+        with AgentClipClient() as client:
+            client.unfeature_slideshow(share_token, admin_token=admin_token)
+    except AgentClipError as exc:
+        raise _bail(str(exc), body=exc.body) from exc
+
+    _print(
+        {'share_token': share_token, 'is_gallery': False},
+        as_json=as_json,
+        summary='removed from gallery.',
+    )
 
 
 # ---------- slideshow delete ----------

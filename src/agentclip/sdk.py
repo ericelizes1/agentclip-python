@@ -224,6 +224,55 @@ class AgentClipClient:
         )
         return SlideshowPatched.model_validate(self._parse(response, expected=200))
 
+    def feature_slideshow(
+        self,
+        share_token: str,
+        *,
+        position: int = 0,
+        admin_token: str,
+    ) -> None:
+        """Add a slideshow to the curated home gallery.
+
+        Auth: Bearer <AGENTCLIP_ADMIN_TOKEN>. The deploy must have the
+        admin token set as an env var; without it the backend returns
+        503 (fail-closed by design).
+
+        ``position`` orders the gallery — lower sorts first; position 0
+        is the home-page hero. Calling repeatedly with different
+        positions is the supported way to reorder.
+        """
+        if position < 0:
+            raise AgentClipError('position must be >= 0')
+        response = self._http.post(
+            f'{self.base_url}/api/v1/slideshow/{share_token}/feature/',
+            json={'position': position},
+            headers=_auth(admin_token),
+        )
+        if response.status_code != 200:
+            raise AgentClipError(
+                f'agentclip backend returned {response.status_code} (expected 200)',
+                status_code=response.status_code,
+                body=response.text,
+            )
+
+    def unfeature_slideshow(self, share_token: str, *, admin_token: str) -> None:
+        """Drop a slideshow from the curated home gallery.
+
+        Auth: Bearer <AGENTCLIP_ADMIN_TOKEN>. 204 on success; idempotent
+        from the caller's view: a 404 is treated as 'already gone'.
+        """
+        response = self._http.delete(
+            f'{self.base_url}/api/v1/slideshow/{share_token}/feature/',
+            headers=_auth(admin_token),
+        )
+        if response.status_code in (204, 404):
+            return
+        raise AgentClipError(
+            f'agentclip backend returned {response.status_code} (expected 204)',
+            status_code=response.status_code,
+            body=response.text,
+        )
+
     def delete_slideshow(self, slideshow_id: str, *, write_token: str) -> None:
         """Delete a slideshow and all its slides. Auth: Bearer <write_token>.
 
