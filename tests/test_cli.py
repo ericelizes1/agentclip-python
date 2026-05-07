@@ -27,6 +27,69 @@ def isolated_state(tmp_path, monkeypatch):
     return StateStore(path=path)
 
 
+def test_create_summary_includes_artifact_urls_when_present(isolated_state, monkeypatch):
+    """When the API returns clip_mp4_url / pdf / embed in the create
+    response, the CLI summary echoes them so the agent / user can
+    paste them straight away."""
+    runner = CliRunner()
+
+    def handler(request):
+        return httpx.Response(
+            201,
+            json={
+                'id': 'ss_demo',
+                'share_url': 'https://agentclip.test/s/abc/',
+                'write_token': 'wt_secret',
+                'clip_mp4_url': 'https://agentclip.test/s/abc.mp4',
+                'clip_pdf_url': 'https://agentclip.test/s/abc.pdf',
+                'embed_url': 'https://agentclip.test/embed/abc',
+            },
+        )
+
+    real_client_cls = httpx.Client
+
+    def _mock_client(*args, **kwargs):
+        return real_client_cls(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr('agentclip.sdk.httpx.Client', _mock_client)
+
+    result = runner.invoke(app, ['slideshow', 'create', '--title', 'render-test'])
+    assert result.exit_code == 0, result.stdout + (result.stderr or '')
+    assert 'mp4:' in result.stdout
+    assert 'https://agentclip.test/s/abc.mp4' in result.stdout
+    assert 'pdf:' in result.stdout
+    assert 'https://agentclip.test/s/abc.pdf' in result.stdout
+    assert 'embed:' in result.stdout
+
+
+def test_create_summary_omits_artifact_lines_when_api_skips_them(isolated_state, monkeypatch):
+    """Older API versions that don't surface render URLs still parse
+    the response cleanly — the artifact lines just don't print."""
+    runner = CliRunner()
+
+    def handler(request):
+        return httpx.Response(
+            201,
+            json={
+                'id': 'ss_demo',
+                'share_url': 'https://agentclip.test/s/abc/',
+                'write_token': 'wt_secret',
+            },
+        )
+
+    real_client_cls = httpx.Client
+
+    def _mock_client(*args, **kwargs):
+        return real_client_cls(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr('agentclip.sdk.httpx.Client', _mock_client)
+
+    result = runner.invoke(app, ['slideshow', 'create', '--title', 'no-render'])
+    assert result.exit_code == 0
+    assert 'mp4:' not in result.stdout
+    assert 'pdf:' not in result.stdout
+
+
 def test_whoami_no_args_prints_no_credit_when_unset(isolated_state):
     runner = CliRunner()
     result = runner.invoke(app, ['whoami'])

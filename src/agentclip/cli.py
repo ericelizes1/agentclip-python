@@ -94,6 +94,37 @@ def _print(payload: dict, *, as_json: bool, summary: str | None = None) -> None:
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def _artifact_lines(result) -> list[str]:
+    """Render the optional clip artifact URLs as indented summary lines.
+
+    The URLs resolve lazily — first fetch triggers the render — so
+    printing them at create / summary time is fine even before the
+    renders complete. Backwards compatible: an older API that doesn't
+    surface these fields just returns nothing here.
+    """
+    lines: list[str] = []
+    mp4 = getattr(result, 'clip_mp4_url', None)
+    pdf = getattr(result, 'clip_pdf_url', None)
+    embed = getattr(result, 'embed_url', None)
+    if mp4:
+        lines.append(f'  mp4:   {mp4}     # paste in GitHub PRs / READMEs')
+    if pdf:
+        lines.append(f'  pdf:   {pdf}     # download branded walkthrough')
+    if embed:
+        lines.append(f'  embed: {embed}     # iframe target for Notion / Substack')
+    return lines
+
+
+def _create_summary(result, *, store_path) -> str:
+    body = [
+        f'created slideshow {result.id}',
+        f'  share: {result.share_url}',
+        *_artifact_lines(result),
+        f'  write_token cached in {store_path}',
+    ]
+    return '\n'.join(body)
+
+
 def _bail(message: str, *, body: str | None = None) -> typer.Exit:
     """Print a real error to stderr and exit non-zero.
 
@@ -135,11 +166,7 @@ def slideshow_create(
     _print(
         result.model_dump(),
         as_json=as_json,
-        summary=(
-            f'created slideshow {result.id}\n'
-            f'  share: {result.share_url}\n'
-            f'  write_token cached in {store.path}'
-        ),
+        summary=_create_summary(result, store_path=store.path),
     )
 
     # First-create nudge: fires once if no whoami is set, then never
@@ -244,7 +271,22 @@ def slideshow_summary(
     except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
 
-    _print(result.model_dump(), as_json=as_json, summary='summary set.')
+    # Echo the share + artifact URLs after setting summary — this is
+    # the agent's "I'm done" moment, so the next thing the user does
+    # is paste the link somewhere. Pre-warm has already enqueued the
+    # render jobs server-side so the URLs are usually ready by the
+    # time anyone clicks.
+    share_url = StateStore().get_share_url(slideshow_id) or ''
+    summary_lines = ['summary set.']
+    if share_url:
+        summary_lines.append(f'  share: {share_url}')
+        summary_lines.append(
+            f'  mp4:   {share_url.rstrip("/")}.mp4     # paste in GitHub PRs / READMEs'
+        )
+        summary_lines.append(
+            f'  pdf:   {share_url.rstrip("/")}.pdf     # download branded walkthrough'
+        )
+    _print(result.model_dump(), as_json=as_json, summary='\n'.join(summary_lines))
 
 
 # ---------- auth login / logout / status ----------

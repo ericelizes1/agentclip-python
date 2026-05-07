@@ -116,10 +116,15 @@ No praise, no hedging, no apologies. The summary is read by someone with 10 seco
 
 ## Step 7: Hand off the URL
 
-The `slideshow_create` response includes `share_url` and `edit_url`. They are **different**:
+The `slideshow_create` response includes a few URLs. They are **different**:
 
-- **`share_url`** — public. Paste it into Slack, a PR description, a recruiter message. Drop it into your reply along with a one-line description of what you found.
-- **`edit_url`** — private. It's the only credential that authorizes caption fixes later. Mention it exists; do not include it inline unless asked. **Treat it like a password.**
+- **`share_url`** — public. Paste it into Slack, iMessage, Discord, a recruiter message. The page renders the narrated walkthrough as a video by default with a Slides toggle for skim mode. Link unfurls show inline video automatically.
+- **`clip_mp4_url`** — public, ends in `.mp4`. Use this in **GitHub PR descriptions, READMEs, and any Markdown surface that only renders inline video for direct video files**. Pasting `share_url` in a GitHub PR shows a bare link; pasting `clip_mp4_url` shows an inline `<video>` element.
+- **`clip_pdf_url`** — public, downloadable branded walkthrough. Useful for attaching to a Jira ticket or a client email when video isn't an option.
+- **`embed_url`** — public iframe target. The `share_url` page exposes a "Copy embed code" button that wraps this in `<iframe>` HTML for Notion, Substack, blog posts.
+- **`edit_url`** — **private**. It's the only credential that authorizes caption fixes later. Mention it exists; do not include it inline unless asked. **Treat it like a password.**
+
+The MP4 and PDF render lazily on first external fetch and are pre-warmed when you call `slideshow_set_summary` (Step 6). You don't need to call any render command — the URLs work as soon as someone clicks them.
 
 If the user mentions sharing externally and they haven't run `agentclip whoami`, suggest it **once**. Their name and URL become the "Filed by" credit on every clip from then on, automatically. Skip the suggestion for casual internal QA where attribution adds nothing.
 

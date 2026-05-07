@@ -185,6 +185,7 @@ def test_admin_token_clear_removes_entry(tmp_path):
 def test_admin_token_rejects_empty_string(tmp_path):
     store = StateStore(path=tmp_path / 'state.json')
     import pytest
+
     with pytest.raises(ValueError):
         store.set_admin_token('')
 

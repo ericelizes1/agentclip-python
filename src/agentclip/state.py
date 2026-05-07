@@ -114,6 +114,16 @@ class StateStore:
         entry = self._read().get('slideshows', {}).get(slideshow_id)
         return entry.get('write_token') if entry else None
 
+    def get_share_url(self, slideshow_id: str) -> str | None:
+        """Return the cached share URL for ``slideshow_id`` if present.
+
+        The summary command echoes it (alongside the .mp4/.pdf
+        derivatives) at the agent's "I'm done" moment so the next thing
+        the user does is paste a working link.
+        """
+        entry = self._read().get('slideshows', {}).get(slideshow_id)
+        return entry.get('share_url') if entry else None
+
     def all_slideshows(self) -> dict[str, dict]:
         return dict(self._read().get('slideshows', {}))
 

@@ -16,6 +16,15 @@ class SlideshowCreated(BaseModel):
     id: str
     share_url: str
     write_token: str = Field(repr=False)
+    # Render-artifact URLs surfaced by the backend so the agent / user
+    # can echo them at create time. They resolve lazily — first fetch
+    # triggers a render — and are pre-warmed on `agentclip slideshow
+    # summary`. Optional so older API versions that haven't deployed
+    # the render pipeline still parse cleanly.
+    clip_mp4_url: str | None = None
+    clip_pdf_url: str | None = None
+    embed_url: str | None = None
+    edit_url: str | None = None
 
 
 class SlideAdded(BaseModel):
@@ -43,3 +52,14 @@ class SlideshowPatched(BaseModel):
     title: str | None = None
     description: str | None = None
     summary: str | None = None
+
+
+class RenderRefreshed(BaseModel):
+    """Response from POST /api/v1/slideshow/<token>/render-bump/.
+
+    Optional escape hatch — `agentclip slideshow regenerate-clip` calls
+    this to force a fresh render after, e.g., a remote retry exhaustion.
+    """
+
+    status: str
+    render_version: int
