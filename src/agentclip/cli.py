@@ -48,6 +48,16 @@ gallery_app = typer.Typer(
 )
 app.add_typer(gallery_app, name='gallery')
 
+# Auth namespace caches the admin token to ~/.agentclip/state.json so
+# gallery commands don't need --admin-token on every call. Same shape as
+# `gh auth login`, `gcloud auth login`, `stripe login` — interactive
+# prompt now, transparent reads from disk forever after.
+auth_app = typer.Typer(
+    help='Cache credentials so gallery commands run without re-pasting tokens.',
+    no_args_is_help=True,
+)
+app.add_typer(auth_app, name='auth')
+
 
 # Subcommands that we explicitly do NOT want to trigger lazy first-run
 # setup. `version` is a status query, `setup` runs setup itself, and
@@ -237,6 +247,68 @@ def slideshow_summary(
     _print(result.model_dump(), as_json=as_json, summary='summary set.')
 
 
+# ---------- auth login / logout / status ----------
+
+
+def _resolve_admin_token(flag: str | None) -> str | None:
+    """Resolve admin token in priority order: flag > env > state file.
+
+    The flag's typer envvar already covers the env-var case; this helper
+    layers the state-file fallback on top so an `agentclip auth login`'d
+    machine never needs --admin-token or AGENTCLIP_ADMIN_TOKEN again.
+    """
+    if flag:
+        return flag
+    return StateStore().get_admin_token()
+
+
+@auth_app.command('login')
+def auth_login(
+    admin_token: str | None = typer.Option(
+        None,
+        '--admin-token',
+        envvar='AGENTCLIP_ADMIN_TOKEN',
+        help=(
+            'Admin token to cache. When omitted, prompts interactively '
+            'with hidden input so the value never appears on screen.'
+        ),
+    ),
+) -> None:
+    """Cache an admin token to ~/.agentclip/state.json.
+
+    The cached token authorizes future `agentclip gallery add/remove`
+    calls without --admin-token on every invocation. The state file is
+    written with 0600 perms (owner read/write only).
+    """
+    token = admin_token
+    if not token:
+        token = typer.prompt('Paste admin token', hide_input=True).strip()
+    if not token:
+        raise _bail('admin token cannot be empty')
+
+    store = StateStore()
+    store.set_admin_token(token)
+    typer.echo(f'admin token cached in {store.path} (perms 0600).')
+
+
+@auth_app.command('logout')
+def auth_logout() -> None:
+    """Clear the cached admin token."""
+    StateStore().clear_admin_token()
+    typer.echo('admin token cleared.')
+
+
+@auth_app.command('status')
+def auth_status() -> None:
+    """Show whether an admin token is currently cached (value masked)."""
+    token = StateStore().get_admin_token()
+    if not token:
+        typer.echo('not logged in. Run `agentclip auth login` to cache an admin token.')
+        return
+    masked = token[:4] + '…' + token[-4:] if len(token) > 8 else '…'
+    typer.echo(f'logged in. cached admin token: {masked}')
+
+
 # ---------- gallery add / remove ----------
 
 
@@ -266,8 +338,12 @@ def gallery_add_cmd(
     --admin-token flag or export AGENTCLIP_ADMIN_TOKEN in your shell.
     Position 0 lands the slideshow as the home-page hero.
     """
+    admin_token = _resolve_admin_token(admin_token)
     if not admin_token:
-        raise _bail('AGENTCLIP_ADMIN_TOKEN is not set; pass --admin-token or export the env var')
+        raise _bail(
+            'no admin token. Run `agentclip auth login` once, '
+            'pass --admin-token, or export AGENTCLIP_ADMIN_TOKEN.',
+        )
 
     try:
         with AgentClipClient() as client:
@@ -296,8 +372,12 @@ def gallery_remove_cmd(
     home-page placement is removed. The featured_at audit timestamp
     is preserved so you can answer 'when was this last featured?'.
     """
+    admin_token = _resolve_admin_token(admin_token)
     if not admin_token:
-        raise _bail('AGENTCLIP_ADMIN_TOKEN is not set; pass --admin-token or export the env var')
+        raise _bail(
+            'no admin token. Run `agentclip auth login` once, '
+            'pass --admin-token, or export AGENTCLIP_ADMIN_TOKEN.',
+        )
 
     try:
         with AgentClipClient() as client:

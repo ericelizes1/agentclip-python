@@ -160,6 +160,34 @@ class StateStore:
             del data['whoami']
             self._write(data)
 
+    # ----- admin token: optional curator credential -----
+
+    def get_admin_token(self) -> str | None:
+        """Return the cached admin token, or None when not logged in.
+
+        Used by `agentclip gallery add/remove` to call the deployment's
+        admin endpoints without forcing the user to pass the token on
+        every invocation. Same shape as gcloud / gh / stripe — log in
+        once, every subsequent CLI call reads from disk.
+        """
+        token = self._read().get('admin_token')
+        return token if token else None
+
+    def set_admin_token(self, token: str) -> None:
+        """Cache the admin token. Atomic write, file perms tightened to 0600."""
+        if not token:
+            raise ValueError('admin token cannot be empty')
+        data = self._read()
+        data['admin_token'] = token
+        self._write(data)
+
+    def clear_admin_token(self) -> None:
+        """Forget the cached admin token. No-op when none was set."""
+        data = self._read()
+        if 'admin_token' in data:
+            del data['admin_token']
+            self._write(data)
+
     # ----- nudge flags: one-time CLI hints -----
 
     def get_flag(self, key: str) -> bool:

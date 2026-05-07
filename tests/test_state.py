@@ -159,3 +159,43 @@ def test_flag_set_then_get(tmp_path):
     assert store.get_flag('credit_nudge_shown') is True
     # Other flags remain unset.
     assert store.get_flag('other_flag') is False
+
+
+# ----- admin token -----
+
+
+def test_admin_token_set_and_get(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    store.set_admin_token('s3cr3t-admin-token')
+    assert store.get_admin_token() == 's3cr3t-admin-token'
+
+
+def test_admin_token_get_when_never_set_returns_none(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    assert store.get_admin_token() is None
+
+
+def test_admin_token_clear_removes_entry(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    store.set_admin_token('s3cr3t')
+    store.clear_admin_token()
+    assert store.get_admin_token() is None
+
+
+def test_admin_token_rejects_empty_string(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    import pytest
+    with pytest.raises(ValueError):
+        store.set_admin_token('')
+
+
+def test_admin_token_coexists_with_slideshows_and_whoami(tmp_path):
+    store = StateStore(path=tmp_path / 'state.json')
+    store.remember('ss_1', write_token='wt', share_url='x', title='T')
+    store.set_whoami('Eric Elizes', 'https://example.com')
+    store.set_admin_token('s3cr3t')
+
+    fresh = StateStore(path=tmp_path / 'state.json')
+    assert fresh.get_token('ss_1') == 'wt'
+    assert fresh.get_whoami()['name'] == 'Eric Elizes'
+    assert fresh.get_admin_token() == 's3cr3t'
