@@ -84,6 +84,7 @@ class AgentClipClient:
         *,
         title: str | None = None,
         description: str | None = None,
+        run_type: str | None = None,
         created_by: str | None = None,
         created_by_url: str | None = None,
     ) -> SlideshowCreated:
@@ -107,6 +108,8 @@ class AgentClipClient:
             payload['title'] = title
         if description is not None:
             payload['description'] = description
+        if run_type is not None:
+            payload['run_type'] = run_type
 
         # Auto-apply the local whoami credit when the caller didn't override.
         if created_by is None and created_by_url is None:
@@ -223,6 +226,41 @@ class AgentClipClient:
             headers=_auth(write_token),
         )
         return SlideshowPatched.model_validate(self._parse(response, expected=200))
+
+    def narrate_slideshow(
+        self,
+        share_token: str,
+        *,
+        write_token: str,
+        voice: str | None = None,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> dict:
+        """Generate or regenerate per-slide narration for a clip.
+
+        Auth: Bearer <write_token>. Idempotent by default — slides
+        with audio already set are skipped unless ``force=True``.
+        ``dry_run=True`` reports estimated cost without calling
+        OpenAI or writing to the database.
+
+        Note: in normal use you don't need to call this. Hitting any
+        clip's ``.mp4`` URL auto-narrates and renders. This method
+        exists for force-regeneration cases (e.g. switching voices on
+        an already-narrated clip).
+        """
+        body: dict[str, Any] = {}
+        if voice is not None:
+            body['voice'] = voice
+        if force:
+            body['force'] = True
+        if dry_run:
+            body['dry_run'] = True
+        response = self._http.post(
+            f'{self.base_url}/api/v1/slideshow/{share_token}/narrate/',
+            json=body,
+            headers=_auth(write_token),
+        )
+        return self._parse(response, expected=200)
 
     def feature_slideshow(
         self,

@@ -117,7 +117,7 @@ def _artifact_lines(result) -> list[str]:
 
 def _create_summary(result, *, store_path) -> str:
     body = [
-        f'created slideshow {result.id}',
+        f'created clip {result.id}',
         f'  share: {result.share_url}',
         *_artifact_lines(result),
         f'  write_token cached in {store_path}',
@@ -146,12 +146,26 @@ def slideshow_create(
     description: str | None = typer.Option(
         None, '--description', '-d', help='Longer "what was being tested" context.'
     ),
+    run_type: str | None = typer.Option(
+        None,
+        '--type',
+        '-T',
+        help=(
+            'Run type — drives the narration voice + pacing. One of: '
+            'bug_repro, smoke_test, demo, onboarding_eval, '
+            'competitive_teardown, generic. Defaults to generic.'
+        ),
+    ),
     as_json: bool = typer.Option(False, '--json', help='Emit JSON instead of a summary.'),
 ) -> None:
-    """Create a new slideshow and cache its write_token locally."""
+    """Create a new clip and cache its write_token locally."""
     try:
         with AgentClipClient() as client:
-            result = client.create_slideshow(title=title, description=description)
+            result = client.create_slideshow(
+                title=title,
+                description=description,
+                run_type=run_type,
+            )
     except AgentClipError as exc:
         raise _bail(str(exc), body=exc.body) from exc
 
@@ -252,6 +266,114 @@ def slideshow_update(
         as_json=as_json,
         summary=f'updated slide #{result.position}: {result.caption}',
     )
+
+
+# ---------- slideshow narrate ----------
+
+
+def _share_token_from(slideshow_id_or_token: str) -> str:
+    """Resolve a UUID slideshow_id to its share_token via cached state.
+
+    The narrate API endpoint keys off ``share_token`` (the public,
+    URL-safe component); other CLI commands key off the UUID
+    ``slideshow_id``. This helper accepts either: a UUID is looked up
+    in the local state store; anything else (including a real
+    share_token) is returned unchanged.
+    """
+    import re
+
+    is_uuid = bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-', slideshow_id_or_token))
+    if not is_uuid:
+        return slideshow_id_or_token
+    share_url = StateStore().get_share_url(slideshow_id_or_token)
+    if not share_url:
+        raise _bail(
+            f'no cached share_url for {slideshow_id_or_token}; pass the share_token directly'
+        )
+    # Extract the token from a URL like https://agentclip.dev/s/<token>/
+    parts = [p for p in share_url.rstrip('/').split('/') if p]
+    return parts[-1]
+
+
+@slideshow_app.command('narrate')
+def slideshow_narrate(
+    slideshow_id_or_token: str = typer.Argument(
+        ..., help='Slideshow ID (UUID) or share_token (the URL slug).'
+    ),
+    voice: str | None = typer.Option(
+        None,
+        '--voice',
+        '-v',
+        help='Override the voice (alloy, echo, fable, onyx, nova, shimmer). Defaults to the run_type voice.',
+    ),
+    force: bool = typer.Option(
+        False,
+        '--force',
+        '-f',
+        help='Regenerate audio even on slides that already have it.',
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        '--dry-run',
+        help='Estimate cost without calling OpenAI or saving anything.',
+    ),
+    as_json: bool = typer.Option(False, '--json'),
+) -> None:
+    """Generate or regenerate narration for a clip.
+
+    In normal use you don't need this — hitting any clip's `.mp4`
+    URL auto-narrates and renders. Use `narrate` only to force a
+    regeneration (e.g. trying a different voice) on a clip that
+    already has audio.
+    """
+    share_token = _share_token_from(slideshow_id_or_token)
+    # The endpoint authenticates via write_token, which the state
+    # store caches under the original UUID id. If the caller passed a
+    # share_token directly, we still need the UUID for token lookup —
+    # bail with a friendly message in that case.
+    import re
+
+    if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-', slideshow_id_or_token):
+        write_token = _require_token(slideshow_id_or_token)
+    else:
+        # Find the slideshow_id whose cached share_url contains this token.
+        store = StateStore()
+        match = next(
+            (
+                sid
+                for sid, entry in store.all_slideshows().items()
+                if (entry.get('share_url') or '').rstrip('/').endswith(f'/s/{share_token}')
+            ),
+            None,
+        )
+        if not match:
+            raise _bail(
+                f'no cached write_token for share_token {share_token}; '
+                f'narrate requires the write_token, which is only available '
+                f'on the machine that created the clip'
+            )
+        write_token = _require_token(match)
+
+    try:
+        with AgentClipClient() as client:
+            result = client.narrate_slideshow(
+                share_token,
+                write_token=write_token,
+                voice=voice,
+                force=force,
+                dry_run=dry_run,
+            )
+    except AgentClipError as exc:
+        raise _bail(str(exc), body=exc.body) from exc
+
+    narration = result.get('narration', {}) if isinstance(result, dict) else {}
+    summary_text = (
+        f'narrate: {narration.get("narrated", 0)} narrated, '
+        f'{narration.get("skipped", 0)} skipped, '
+        f'cost ~${narration.get("total_cost_usd", "0.00")}'
+        f'{" (dry run)" if narration.get("dry_run") else ""}'
+    )
+    _print(narration or result, as_json=as_json, summary=summary_text)
 
 
 # ---------- slideshow summary ----------
@@ -541,7 +663,7 @@ def install_skill(
             label = f'"{name.strip()}"'
             if url.strip():
                 label += f' -> {url.strip()}'
-            typer.echo(f'  saved. clips will display "Filed by {label}".')
+            typer.echo(f'  saved. {label} will be credited on every clip.')
             typer.echo("  change anytime: agentclip whoami --set '...' --url '...'")
 
 
@@ -591,7 +713,7 @@ def whoami(
         label = f'"{set_name.strip()}"'
         if url and url.strip():
             label += f' -> {url.strip()}'
-        typer.echo(f'saved. clips will display "Filed by {label}".')
+        typer.echo(f'saved. {label} will be credited on every clip.')
         return
 
     # No flags: print current credit.

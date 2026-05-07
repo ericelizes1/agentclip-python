@@ -25,6 +25,7 @@ class SlideshowCreated(BaseModel):
     clip_pdf_url: str | None = None
     embed_url: str | None = None
     edit_url: str | None = None
+    run_type: str | None = None
 
 
 class SlideAdded(BaseModel):

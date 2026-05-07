@@ -1,11 +1,11 @@
 ---
 name: agentclip
-description: Publish a QA slideshow of your work. Use after driving a browser through a feature, bug repro, or onboarding flow whose result the user wants to see at a glance. Triggers on "QA this", "post a slideshow of what you did", "show me what happened", "share a run of X", or whenever your work produces visual evidence worth keeping. Output is a shareable URL with screenshots, captions, and a summary.
+description: Capture a narrated clip of your work. Use after driving a browser through a feature, bug repro, or onboarding flow the user wants to see at a glance. Triggers on "QA this", "show me what happened", "share a run of X", "demo this", "repro the bug visually", or whenever your work produces visual evidence worth keeping. Output is a shareable URL that plays as a narrated video and falls back to a slide-by-slide scroll.
 ---
 
 # agentclip
 
-You drove a browser. The user wants the receipts. This skill turns the run into a shareable URL using four tools: `slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`.
+You drove a browser. The user wants the receipts. This skill turns the run into a shareable URL — a narrated walkthrough that plays as a video by default and offers a slide-by-slide scroll fallback. Four tools do the work: `slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`.
 
 The tools work without this skill. **The artifact is only as good as the captions and structure you give it.** Read on.
 
@@ -14,25 +14,39 @@ The tools work without this skill. **The artifact is only as good as the caption
 Run this skill when the user asks for visual evidence of a browser-driven task. Triggers include:
 
 - "QA this", "QA the X flow", "run a smoke on Y"
-- "Post a slideshow", "share a run", "show me what happened"
+- "Show me what happened", "share a run", "post a clip", "make a clip"
 - "Repro the bug" — finish by showing it
+- "Demo this" / "walk through this" / "record this"
 - The user is going to share the result externally (Slack, PR description, recruiter ping)
 
 Skip the skill when:
 
 - The task is code-only with no observable browser surface
 - The user explicitly asked only for a written report
-- You captured fewer than two distinct states (a one-slide slideshow isn't worth a URL)
+- You captured fewer than two distinct states (a one-slide clip isn't worth a URL)
 
-If skipping, still summarize the run in chat — just don't create a slideshow.
+If skipping, still summarize the run in chat — just don't create a clip.
 
-## Step 1: Decide what to capture before you click
+## Step 0: Pick the spine and the run type before you click
 
-A slideshow is a story, not a flipbook. Before you start clicking, answer:
+A clip is a story, not a flipbook. Before clicking, answer two questions:
 
-> What is the one thing the reader of this slideshow should walk away knowing?
+**1. What's the spine?** What is the one thing the reader of this clip should walk away knowing?
 
-That answer is your **spine**. Every slide either advances it or doesn't belong.
+**2. What kind of run is this?** This determines the narration voice + pacing for the rendered video. Pass `--type <value>` to `agentclip slideshow create` (or `run_type` via the SDK). Pick from the trigger phrasing — you almost never need to ask the user:
+
+| Trigger phrasing in the user prompt | `run_type` | Voice |
+|---|---|---|
+| "QA", "smoke test", "smoke" | `smoke_test` | nova |
+| "repro", "reproduce", "bug" | `bug_repro` | onyx |
+| "demo", "walkthrough", "show off", "showcase" | `demo` | shimmer |
+| "onboarding", "first impression", "friction", "fresh user" | `onboarding_eval` | nova |
+| "compare", "teardown", "vs", "competitive" | `competitive_teardown` | echo |
+| Plain "make a clip", "show me what happened", anything else | `generic` | nova |
+
+If the trigger is too ambiguous to pick (e.g. user just says "clip this") — ask once, naturally: *"Quick check: is this a bug repro, a smoke test, a demo, or something else? It changes the narration voice."* Don't pause for confirmation on every step; ask once and move.
+
+The same voice runs the whole clip — intro, every slide caption, and outro all share one voice so the listener hears one consistent presenter.
 
 | Run type | Spine |
 |---|---|
@@ -42,18 +56,20 @@ That answer is your **spine**. Every slide either advances it or doesn't belong.
 | Onboarding evaluation | The friction points — first-impression states + drop-off moments |
 | Demo for a recruiter | The polished moments — title screens, hero states, the result |
 
-If you can't name the spine, ask the user before clicking. A slideshow without a spine is filler.
+If you can't name the spine, ask the user before clicking. A clip without a spine is filler.
 
-## Step 2: Create the slideshow at the start, not the end
+## Step 2: Create the clip at the start, not the end
 
 Call `slideshow_create` **before** you take screenshots. Two reasons:
 
 - The returned `slideshow_id` is what every `slideshow_add_slide` call needs. Creating up front means you add slides as you go instead of buffering them.
-- Writing the title forces you to commit to a spine (Step 1).
+- Writing the title + description forces you to commit to a spine (Step 0). Both fields are read aloud in the rendered video — `description` becomes the spoken intro, so write it like a one-line "here's what you're about to watch" framing, not a database row.
 
 **Title:** noun phrase. "Project-create flow QA on staging." "Login regression repro." Not a sentence, not a question.
 
-**Description:** one or two sentences naming what you're testing, with the relevant assumptions (browser, user role, environment).
+**Description:** one or two sentences naming what you're testing, with the relevant assumptions (browser, user role, environment). Written to be heard — em-dashes give the TTS a natural pause beat.
+
+**`run_type`:** pass the value you picked in Step 0. Drives the narration voice + pacing.
 
 ## Step 3: Take screenshots only at meaningful moments
 
@@ -75,7 +91,14 @@ Target ratio: roughly **one slide per minute** of agent run time. Onboarding QA:
 
 ## Step 4: Caption every slide in active voice
 
-Format: **action + expectation + result.** One or two sentences. Readers skim captions, not screenshots.
+Format: **action + expectation + result.** One or two sentences. Readers skim captions, not screenshots — and the TTS pipeline reads them aloud in the rendered video, so they need to sound natural when spoken.
+
+**Captions are required.** The API rejects empty captions with a 400 — a slide with no spoken context is broken output.
+
+**Narration-friendly tips:**
+- Write in complete sentences. "Clicked submit. Got a 500." plays better than "submit, 500."
+- Em-dashes give nova/onyx/shimmer a natural pause beat.
+- Avoid jargon a listener wouldn't catch on the first pass — readers can re-skim, listeners can't.
 
 Good:
 
@@ -102,7 +125,7 @@ If a slide should not exist at all, leave it for now and call it out in the summ
 
 ## Step 6: Set the summary before you hand off the URL
 
-`slideshow_set_summary` is the TL;DR. **Under 80 words.** Structure:
+`slideshow_set_summary` is the TL;DR. **Under 80 words.** It's read aloud as the spoken outro on the rendered video AND shown as a callout box on the share page, so write it for both surfaces — short, factual, complete sentences. Structure:
 
 1. **One sentence on outcome** — what was tested, did it work.
 2. **Counts** — how many flows passed, how many failed, how many warnings.
@@ -126,13 +149,13 @@ The `slideshow_create` response includes a few URLs. They are **different**:
 
 The MP4 and PDF render lazily on first external fetch and are pre-warmed when you call `slideshow_set_summary` (Step 6). The render task auto-narrates any slides without audio before stitching, so you don't need to think about narration as a separate step — captions go in, narrated video comes out. You don't need to call any render or narrate command; the URLs work as soon as someone clicks them.
 
-If the user mentions sharing externally and they haven't run `agentclip whoami`, suggest it **once**. Their name and URL become the "Filed by" credit on every clip from then on, automatically. Skip the suggestion for casual internal QA where attribution adds nothing.
+If the user mentions sharing externally and they haven't run `agentclip whoami`, suggest it **once**. Their name and URL become the creator credit credit on every clip from then on, automatically. Skip the suggestion for casual internal QA where attribution adds nothing.
 
 ## Tool reference
 
 | Tool | When | Required args |
 |---|---|---|
-| `slideshow_create` | Once, at the start (Step 2) | `title`, `description` |
+| `slideshow_create` | Once, at the start (Step 2) | `title`, `description`, `run_type` |
 | `slideshow_add_slide` | After each meaningful state (Step 3) | `slideshow_id`, `media_path`, `caption` |
 | `slideshow_update_slide` | To fix in place (Step 5) | `slideshow_id`, `slide_position`, what's changing |
 | `slideshow_set_summary` | Once, near the end (Step 6) | `slideshow_id`, `summary` |
@@ -144,8 +167,8 @@ The tools persist your `write_token` locally. After `slideshow_create` returns, 
 - **Narrating yourself.** "I will now navigate to the login page." Captions are about the app, not you.
 - **Filler slides.** "Loading…" is not a slide. Wait for the loaded state.
 - **Terminal screenshots.** If you ran a CLI command, paste the output in the caption. Terminal shots break the browser narrative.
-- **Mixing flows in one slideshow.** Signup and checkout are two slideshows. The user reorders context per audience.
-- **Skipping the summary.** Without it the slideshow is a stack of screenshots. With it, it's a deliverable.
+- **Mixing flows in one clip.** Signup and checkout are two clips. The user reorders context per audience.
+- **Skipping the summary.** Without it the clip has no spoken outro and the share page has no callout box — it's a stack of screenshots. With it, it's a deliverable.
 - **Asking before every slide.** Don't. Take the screenshots, write the captions, set the summary, hand over the URL.
 - **Faking it.** If you can't actually drive the browser (no MCP browser tool, no Playwright, no Chromium available in your runtime), say so explicitly: "Real evidence would require a browser-driving tool. Recommending [the user runs it themselves / a different surface]." Never invent screenshots.
 
@@ -156,7 +179,8 @@ User: *"QA the new project-create flow on staging."*
 ```python
 slideshow_create(
     title="Project-create flow QA on staging",
-    description="Walking through as a brand-new user. Looking for friction, broken validation, and surprises.",
+    description="A walkthrough of the new project-create flow as a brand-new user — looking for friction, broken validation, and surprises.",
+    run_type="smoke_test",  # picked from "QA" in the trigger phrase
 )
 # returns slideshow_id="ss_abc123"
 

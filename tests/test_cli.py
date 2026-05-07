@@ -101,7 +101,8 @@ def test_whoami_set_then_get(isolated_state):
     runner = CliRunner()
     result = runner.invoke(app, ['whoami', '--set', 'Eric Elizes', '--url', 'https://elizes.dev'])
     assert result.exit_code == 0
-    assert 'Filed by' in result.stdout
+    assert 'will be credited' in result.stdout
+    assert 'Eric Elizes' in result.stdout
 
     # Reading back surfaces the stored credit.
     result = runner.invoke(app, ['whoami'])
