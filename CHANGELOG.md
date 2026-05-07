@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-07
+
+Skill rewrite: caption + intro + outro guidance is now run-type-aware. Same content, different run_type, totally different voice.
+
+### Changed
+
+- `SKILL.md` Step 4 (captions) replaced the universal "action + expectation + result" rule with five explicit voice profiles — one per run_type — each with concrete good examples. Bug repros stay terse and stack-trace-adjacent. Demos read like a presenter narrating in present tense, with no setup or recap. Onboarding evals are observational. Competitive teardowns are analytical with named comparisons.
+- `SKILL.md` Step 2 (description = spoken intro) gets per-run-type opener examples. Demo intros explicitly ban *"Welcome to..."*, *"Today we'll be looking at..."*, *"I'm excited to show you..."* — the MP4 starts where the action is.
+- `SKILL.md` Step 6 (summary = spoken outro) gets per-run-type wrap examples. Demos land the value in one sentence, not a recap.
+- New anti-patterns called out by name: corporate-presenter cringe, court-reporter past tense in demos, buzzword filler (*seamless*, *robust*, *leverage*), as-we-can-see-isms.
+- Added a second worked example contrasting the *same* flow recorded as `smoke_test` (QA log) vs `demo` (presenter). Makes the run-type → voice mapping concrete.
+
+### Notes
+
+- No code changes. Backend pipeline is unchanged. This release is entirely about the prompt the bundled skill plants in the agent — better prompt, better captions, better narration.
+- Run `agentclip install-skill --force` to refresh the cached skill on a previously-installed system.
+
+[0.3.1]: https://github.com/ericelizes1/agentclip-python/compare/v0.3.0...v0.3.1
+
 ## [0.3.0] - 2026-05-07
 
 The walkthrough release. Backend now produces a clip that opens with a brand title card + spoken intro and closes with an end card + spoken outro, with the narration voice picked automatically from the clip's `run_type`. The CLI/SDK exposes the new knobs and adds an explicit `narrate` command for force-regeneration use cases.
@@ -71,5 +90,5 @@ First public release. Backend is live at https://agentclip.dev; this package is 
 - Default backend URL: `https://agentclip.dev`. Override with `AGENTCLIP_BASE_URL` for self-hosted deploys.
 - v0.1 has no account flow; the `write_token` returned at create time is the only credential. Cache it via the state store or pass it explicitly.
 
-[Unreleased]: https://github.com/ericelizes1/agentclip-python/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ericelizes1/agentclip-python/compare/v0.3.1...HEAD
 [0.1.0]: https://github.com/ericelizes1/agentclip-python/releases/tag/v0.1.0
