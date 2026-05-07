@@ -124,7 +124,7 @@ The `slideshow_create` response includes a few URLs. They are **different**:
 - **`embed_url`** — public iframe target. The `share_url` page exposes a "Copy embed code" button that wraps this in `<iframe>` HTML for Notion, Substack, blog posts.
 - **`edit_url`** — **private**. It's the only credential that authorizes caption fixes later. Mention it exists; do not include it inline unless asked. **Treat it like a password.**
 
-The MP4 and PDF render lazily on first external fetch and are pre-warmed when you call `slideshow_set_summary` (Step 6). You don't need to call any render command — the URLs work as soon as someone clicks them.
+The MP4 and PDF render lazily on first external fetch and are pre-warmed when you call `slideshow_set_summary` (Step 6). The render task auto-narrates any slides without audio before stitching, so you don't need to think about narration as a separate step — captions go in, narrated video comes out. You don't need to call any render or narrate command; the URLs work as soon as someone clicks them.
 
 If the user mentions sharing externally and they haven't run `agentclip whoami`, suggest it **once**. Their name and URL become the "Filed by" credit on every clip from then on, automatically. Skip the suggestion for casual internal QA where attribution adds nothing.
 
