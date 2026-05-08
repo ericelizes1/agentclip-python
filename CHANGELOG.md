@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-07
+
+Fix: `pip install agentclip` was broken out of the box. The default backend URL pointed at the marketing host, which 308-redirects `/api/*` and Cloudflare strips the body — so every `slideshow create` failed with `expected 201`. Default now points at the API host directly.
+
+### Fixed
+
+- `DEFAULT_BASE_URL` now resolves to `https://api.agentclip.dev` (was `https://agentclip.dev`). The marketing host doesn't forward `/api/*` to the Django service; the trailing-slash redirect plus Cloudflare's body-strip on 308 made every CLI/SDK write fail. Existing users who exported `AGENTCLIP_BASE_URL` are unaffected.
+
+### Notes
+
+- No API or schema changes. Drop-in replacement for 0.3.1.
+
+[0.3.2]: https://github.com/ericelizes1/agentclip-python/compare/v0.3.1...v0.3.2
+
 ## [0.3.1] - 2026-05-07
 
 Skill rewrite: caption + intro + outro guidance is now run-type-aware. Same content, different run_type, totally different voice.

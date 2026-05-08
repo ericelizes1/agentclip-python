@@ -26,8 +26,14 @@ import httpx
 from ._models import SlideAdded, SlideshowCreated, SlideshowPatched, SlideUpdated
 from .state import StateStore
 
-DEFAULT_BASE_URL = 'https://agentclip.dev'
-"""Public hosted backend. Override with AGENTCLIP_BASE_URL or base_url=."""
+DEFAULT_BASE_URL = 'https://api.agentclip.dev'
+"""Public hosted backend. Override with AGENTCLIP_BASE_URL or base_url=.
+
+This is the API origin (Django service), not the marketing site. The web
+host (agentclip.dev) does not forward /api/* — POSTs hit Cloudflare's
+trailing-slash 308 and lose the body, so the CLI must talk to the API
+host directly.
+"""
 
 
 class AgentClipError(Exception):
