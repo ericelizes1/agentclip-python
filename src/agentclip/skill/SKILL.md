@@ -158,6 +158,8 @@ Target ratio: roughly **one slide per minute** of agent run time. Walkthrough/gu
 
 A bug repro and a feature walkthrough are not the same artifact. **Caption style depends on the `run_type` you picked.** Get this wrong and the clip sounds either like a stack-trace dump (when it shouldn't) or like a corporate webinar (please no).
 
+**Read the screenshot before writing the caption.** After every `browser_screenshot`, open the returned PNG path with the Read tool (or your runtime's equivalent) and look at it. If the caption mentions something not visible in the image, rewrite it. Mental-model captions cause structural drift — the screenshot is the only source of truth for what's on screen. Step 3.5 verifies this; do it yourself first.
+
 **Universal rule across all types:** captions are required. The API rejects empty captions with a 400. A slide without spoken context is broken output.
 
 **Banned across all types** — these read as "AI demo" the moment you hear them:
@@ -250,11 +252,170 @@ The good version reads like a triage note. The bad one reads like Slack while pa
 
 `media_path` accepts PNG / JPEG / GIF / WebP for stills, MP4 / WebM / MOV for short clips. Use a clip when motion **is** the story (janky animation, race condition only visible in recording, fluid demo of a flow). Cap clips at a few seconds; upload limit is 25 MB.
 
+## Step 3.5: Verify the caption against the screenshot
+
+After every `slideshow_add_slide` whose caption claims something visual, spawn a **caption verifier subagent** to check the caption against the image. This is the structural fix for the drift problem — even careful captioning slips when the agent writes from a mental model instead of from pixels. The verifier reads only the image and the claim; it can't be biased by what you *expected* to be on screen.
+
+### When and how to spawn
+
+Fire the verifier immediately after `slideshow_add_slide` returns. In Claude Code, that means a `Task` tool call with `subagent_type: "general-purpose"` and the system prompt below. In other runtimes use the equivalent subagent primitive.
+
+The subagent must accept image inputs — that's load-bearing (see anti-patterns at the bottom). If your runtime's subagents can't take image bytes, skip verification and log a one-line note in your chat output: *"Verification skipped — runtime doesn't support image inputs to subagents."* Don't fall back to feeding the verifier a text description of the image; that defeats the entire point.
+
+Pass these inputs:
+- The PNG path returned by `browser_screenshot`
+- The caption string you just sent to `slideshow_add_slide`
+- The `run_type` of the slideshow
+
+### The verifier system prompt
+
+Copy this into the spawned subagent's system prompt verbatim:
+
+```
+You verify a single caption against a single screenshot. Your job is to catch
+mismatches between what the caption claims and what's actually visible in the
+image. You have one tool: Read (for the image path). Use it first.
+
+Follow this chain exactly. Do not skip steps even if the caption looks fine.
+
+1. Read the image at the provided path.
+2. Enumerate visible UI elements. List every concrete element you can identify:
+   button labels, panel titles, status text, file/path strings, structural
+   elements like sidebars and headers, visible state indicators. Do not
+   interpret what they mean — just enumerate what's there.
+3. Decompose the caption into atomic claims. Each claim is a single observable
+   statement about the image (e.g., "the rail shows sidebar.tsx and kpi-cards.tsx",
+   "the right panel shows 'Creating dashboard page'").
+4. For each claim, mark it ✓ supported (clearly present in the enumeration) or
+   ✗ unsupported (contradicted by, or absent from, the enumeration). Cite the
+   specific evidence for each verdict.
+5. If any claim is ✗ unsupported, draft a suggested_caption that:
+   - describes only what's actually visible in the image,
+   - stays in the run_type's voice (walkthrough = presenter present-tense;
+     guide = instructional second-person; bug = terse stack-trace-adjacent),
+   - is the same approximate length as the original caption.
+6. Emit JSON only. No prose, no preamble, no commentary.
+
+Output schema:
+
+{
+  "matches": <bool>,
+  "claims": [
+    { "text": "<claim>", "supported": <bool>, "evidence": "<what you saw>" }
+  ],
+  "suggested_caption": "<string or null>"
+}
+
+Visual tokens get vanishingly small attention weights in deep transformer
+layers. Forcing yourself to enumerate before scoring is what keeps the image
+in working memory. Do not skip step 2.
+```
+
+### Acting on the result
+
+- **`matches: true`** — continue to the next slide. No update.
+- **`matches: false`** — call `slideshow_update_slide(slide_position, caption=<suggested_caption>)`. Then move on to the next slide. **Single retry max.** Do not re-verify the corrected caption — if it's also wrong, that's a known limitation; ship and add a one-line note to your chat output: *"Slide N corrected once; final caption may still drift — review before sharing."*
+
+### Cost / latency budget
+
+Verifier latency should stay under ~3s/slide on Haiku-tier models. If your runtime takes longer, either drop to a faster model tier in the subagent dispatch, or batch verification at end-of-clip instead of per-slide. Don't drop verification entirely.
+
 ## Step 4: Fix slides in place — don't pile on corrections
 
 If a slide has a typo, a wrong caption, or a screenshot that didn't capture what you meant, fix it with `slideshow_update_slide`. **Do not append a "correction" slide.**
 
 If a slide should not exist at all, leave it for now and call it out in the summary. v1 has no `delete_slide`; honesty in the summary is the right move, not a fake "redacted" slide.
+
+## Step 4.5: Review the whole script before the outro
+
+Step 3.5 catches per-slide drift between caption and screenshot. It does not catch *whole-clip* drift — voice slipping between slides, banned phrases that survived two passes, an opener that doesn't match the patterns of real product introductions, a spine that wandered. Run a **script reviewer subagent** once after the last `slideshow_add_slide` and before `slideshow_set_summary`. The summary is your last chance to set the outro voice and it triggers render — fix the script first.
+
+### When and how to spawn
+
+Fire one call, after the final slide, before `slideshow_set_summary`. Same subagent primitive as Step 3.5 (Claude Code: `Task` tool with `subagent_type: "general-purpose"`). The reviewer doesn't need image inputs — only text — so it works even on runtimes where Step 3.5 had to skip.
+
+Pass these inputs:
+- The `slideshow_id` (the reviewer fetches captions from the public API)
+- The `run_type`
+- The path to the installed skill on disk (typically `~/.claude/skills/agentclip/SKILL.md`) — the reviewer loads the per-`run_type` voice rules from there directly so the rubric stays in one place
+
+### The reviewer system prompt
+
+Copy this into the spawned subagent's system prompt verbatim:
+
+```
+You review the narration script of an agentclip slideshow against the voice
+rules in the bundled SKILL.md. Your job is to catch drift that survived
+per-slide verification: voice slips between slides, banned phrases, an
+opener that doesn't follow real product-introduction shape, a spine that
+wandered.
+
+You have these tools: Read (for the SKILL.md path), and a way to fetch the
+slideshow's captions over HTTP (curl via Bash, or a fetch primitive in your
+runtime).
+
+Follow this chain:
+
+1. Read SKILL.md at the provided path. Find the section for the given
+   run_type and load its voice rules, banned phrases, and good/bad caption
+   examples. These ARE the rubric — don't import a separate one.
+2. Fetch the slideshow's captions:
+   GET https://api.agentclip.dev/api/v1/slideshow/<share_token>/
+   Extract: title, description, slides (in position order), summary if any.
+   The share_token is the last path segment of the share_url returned by
+   slideshow_create.
+3. Apply each rubric check. For every finding, cite the slide position and
+   the exact phrase or pattern that triggered it.
+
+   - Voice consistency: every caption matches the run_type voice
+     (walkthrough = presenter present-tense complete sentences;
+      guide = instructional second-person step-by-step;
+      bug = terse stack-trace-adjacent past-tense facts).
+   - Banned phrases: scan all text for the exact phrases listed in
+     SKILL.md ("I'm excited", "Welcome to", "Today we'll", "as we can see",
+     "in conclusion", "leverage", "seamless", "robust", "powerful",
+     "intuitive", "best-in-class") plus stacked verbless fragments and
+     long em-dashed run-ons.
+   - Opener shape: the description (spoken intro) is 2-4 complete sentences
+     with subject + verb. Not telegraphic bullets. Not banned-opener phrases.
+   - Spine: every caption advances the same one-thing the viewer should
+     learn. Flag captions that describe unrelated UI details for their own
+     sake.
+
+4. Optionally draft a summary in the run_type voice that the orchestrator
+   can pass directly to slideshow_set_summary (under 80 words, follows the
+   per-run-type rules in SKILL.md).
+
+5. Emit JSON only.
+
+Output schema:
+
+{
+  "voice_consistent": <bool>,
+  "banned_phrase_hits": [
+    { "slide": <int>, "phrase": "<exact match>", "fix": "<replacement caption>" }
+  ],
+  "opener_shape_match": <bool>,
+  "opener_fix": "<rewritten description if mismatch, else null>",
+  "spine_drift": [
+    { "slide": <int>, "issue": "<what wandered>", "fix": "<replacement caption>" }
+  ],
+  "summary_suggestion": "<draft summary in voice, or null>"
+}
+
+Make changes only when a specific rubric rule is violated, not for stylistic
+taste. The agent who wrote these captions has authorial choices the user
+already accepted; your job is rule enforcement, not editorial revision.
+```
+
+### Acting on the result
+
+For each finding the reviewer returns:
+- `banned_phrase_hits[].fix` and `spine_drift[].fix` → call `slideshow_update_slide(slide_position, caption=<fix>)` once per finding.
+- `opener_fix` → there's no API to update the description after creation; if the description has a banned opener, log it as a known limitation in your chat output and remember for the next clip's `slideshow_create` call.
+- `summary_suggestion` → if present, pass it as the `summary` argument to `slideshow_set_summary`. If null, write the summary yourself per Step 5.
+
+Then proceed to Step 5. **Do not re-spawn the reviewer after applying fixes** — single pass, ship.
 
 ## Step 5: Set the summary — the spoken outro
 
@@ -299,6 +460,8 @@ If the user mentions sharing externally and they haven't run `agentclip whoami`,
 
 The tools persist your `write_token` locally. After `slideshow_create` returns, you only need the `slideshow_id`.
 
+**Quality-gate subagents are not in this table.** Steps 3.5 (caption verifier) and 4.5 (script reviewer) instruct you to spawn subagents using your *runtime's* native primitive (Claude Code: `Task` tool; other runtimes: equivalent). agentclip ships no model-call MCP tools by design — the gates run in the host's existing model context, not against a separate API the package depends on.
+
 ## Anti-patterns
 
 - **Corporate-presenter cringe.** *"I'm excited to show you today..."*, *"Welcome to..."*, *"Today we'll be diving into..."*. The MP4 starts where the action is. Cut every word that doesn't earn its place.
@@ -314,6 +477,10 @@ The tools persist your `write_token` locally. After `slideshow_create` returns, 
 - **Asking before every slide.** Don't. Take the screenshots, write the captions, set the summary, hand over the URL.
 - **Faking it.** If you can't actually drive the browser (no MCP browser tool, no Playwright, no Chromium available in your runtime), say so explicitly: *"Real evidence would require a browser-driving tool. Recommending [the user runs it themselves / a different surface]."* Never invent screenshots.
 - **OS-level screen capture.** Never use `screencapture` (macOS), `scrot`, `gnome-screenshot`, or any tool that captures the OS screen. They include IDE windows, terminal panes, and the user's chat with the agent — all of which leak to a public URL when the clip ships. Use viewport-only capture: agentclip's `browser_*` MCP tools, a browser MCP, or scripted Playwright/Puppeteer with a controlled viewport. See "Browser tooling" near the top of this skill.
+- **Captioning in a subagent.** Step 3.5 verifies captions in a subagent. The captioning *itself* stays in your main loop — captioning is too tightly coupled to the capture context, and splitting it loses the visual grounding you have right after `browser_screenshot` returns. The verifier exists *because* a fresh-context observer catches what your capture-context can't; that asymmetry breaks if both are subagents.
+- **Parallel verifier subagents per slide.** Sequential one-by-one is fine for the cadence agentclip ships at. Adding parallelism multiplies variance without value.
+- **Feeding the verifier a text description of the screenshot instead of the image bytes.** Every intermediary summarization step bleeds out the visual grounding the verifier exists to enforce. If your runtime can't pass image bytes to subagents, skip verification and log a note — don't substitute a description.
+- **Looping on verifier rejections.** Steps 3.5 and 4.5 each apply at most one correction pass. If a corrected caption is also wrong, ship with a low-confidence note. Stuck loops are worse than a flagged caption the user can edit via the share URL.
 
 ## Worked example — walkthrough
 

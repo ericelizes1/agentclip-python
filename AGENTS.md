@@ -69,6 +69,15 @@ Use viewport-only capture only:
 
 This isn't a stylistic preference. It's a privacy boundary.
 
+## When recording clips, spawn the quality-gate subagents
+
+Since 0.7.0, the bundled skill at `src/agentclip/skill/SKILL.md` adds two quality-gate subagents you (the agent) are expected to spawn during clip recording:
+
+- **Step 3.5 — caption verifier.** After every `slideshow_add_slide`, spawn a `Task` subagent with the verifier prompt baked into SKILL.md. It enumerates visible UI elements before scoring (the MJ1 chain) and returns structured JSON. On `matches: false`, call `slideshow_update_slide` once with the suggested caption and move on.
+- **Step 4.5 — script reviewer.** Once after the final slide, before `slideshow_set_summary`. Same primitive. Catches voice / banned-phrase / opener-shape / spine drift across the whole clip and can pre-cook a summary in voice.
+
+Both gates are recipes the *host* invokes via its native subagent primitive — agentclip-python ships no model-call MCP tools by design. If you skip these, you'll ship a clip with caption drift on first audit; the v0.app hero recording at clip `UisOCaH5UbO-yKcn` (commit `60cf540`) had three of five captions drift before the gates landed. The skill steps explain the spawn shape; just follow them.
+
 ## Useful CLI commands while developing
 
 ```

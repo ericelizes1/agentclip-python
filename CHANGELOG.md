@@ -6,6 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-09
+
+### Added
+
+- **Quality-gate subagents in the bundled skill.** SKILL.md now instructs the host agent to spawn two narrow subagents during clip recording: a **per-slide caption verifier** (Step 3.5) that runs after every `slideshow_add_slide` and forces correction via `slideshow_update_slide` when the caption drifts from the screenshot, and a **whole-script reviewer** (Step 4.5) that runs once before `slideshow_set_summary` and catches voice / banned-phrase / opener-shape drift across the whole clip. Both prompts are hardcoded in SKILL.md as copy-pasteable blocks following the MJ1 grounded-verification chain (enumerate visible elements before scoring) for the verifier and a SKILL.md-rubric-driven check for the reviewer.
+- **Visual-vet rule** at the top of Step 3 — even before the subagent fires, the captioning agent must Read the screenshot file before writing the caption. Free intermediate that helps on hosts that can't spawn subagents.
+
+### Changed
+
+- Anti-patterns section gains four new entries directly tied to the quality gates: don't put captioning itself in a subagent (loses visual grounding), don't run verifiers in parallel, don't feed the verifier a text description instead of the image bytes, don't loop on verifier rejections (single-pass max).
+- Tool reference table footer clarifies that quality-gate subagents are *not* shipped as MCP tools by design — they run in the host's existing model context, no model-API dependency for agentclip-python.
+
+### Why this version
+
+Three of five captions on the v0.app hero clip (`UisOCaH5UbO-yKcn`, recorded 2026-05-09) drifted from what was actually pixel-visible — the caption claimed "no template picker" while one was on screen, claimed four components when only two were in the rail, claimed "version one is done" while the right panel still rendered "Creating dashboard page". The clip shipped to a public URL before the user caught the drift in manual audit. Discipline rules don't fix that; structural gates do. Rationale and architecture decisions are in `docs/brainstorms/2026-05-09-quality-gates-and-subagents-requirements.md` and `docs/plans/2026-05-09-001-feat-quality-gates-and-subagents-plan.md`.
+
+### Upgrade
+
+```
+pip install --upgrade agentclip
+agentclip install-skill --force    # refreshes ~/.claude/skills/agentclip/SKILL.md
+# restart Claude Code so the new skill loads
+```
+
+No Python code changed. No MCP tool surface changed. No API changes. Pure skill update bundled with the package.
+
 ## [0.6.1] - 2026-05-09
 
 ### Fixed
