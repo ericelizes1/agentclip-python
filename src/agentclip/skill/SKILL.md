@@ -25,6 +25,46 @@ Skip the skill when:
 
 If skipping, summarize the run in chat — just don't create a clip.
 
+## Browser tooling — pick a method before Step 0
+
+Capturing screenshots is the agent's responsibility. The slideshow tools accept a `media_path`, but **this skill does not provide the browser**. Decide how you'll capture before you start clicking — and never use OS-level screen capture, which leaks unrelated windows to a public URL.
+
+### Method priority (high to low)
+
+1. **`agentclip[browser]` (Playwright)** — preferred when installed. `pip install agentclip[browser]` adds Playwright with a controlled, viewport-only Chromium. No other windows can leak in. If the package is installed in your environment, prefer this over MCP tools because the skill is written assuming this surface.
+2. **Browser MCP tools** (e.g., `mcp__claude-in-chrome__*`, Playwright MCP, Puppeteer MCP) — fine. These capture the browser tab only, not the OS screen. The challenge is getting the screenshot to disk for `agentclip slideshow add`. See "Saving MCP screenshots to disk" below.
+3. **Your own scripted Playwright / Puppeteer** — fine. Use a fixed viewport (e.g., 1280×720 or 1568×768) and write screenshots straight to disk.
+
+### Anti-pattern: OS screen capture
+
+Never use `screencapture` (macOS), `scrot` (Linux), `gnome-screenshot`, PowerShell `Get-Screenshot`, `screencapture -x`, or any tool that captures the OS screen. They grab everything visible — including the IDE, the terminal showing the user's chat with the agent, system notifications, and any other open windows. Uploading those PNGs to a public share URL leaks the user's environment to anyone with the link. **This is a privacy bug, not a stylistic one.**
+
+If only OS screen capture is available, stop and tell the user: *"Real screenshots would require a browser-driving tool. Recommending `pip install agentclip[browser]` to enable viewport-only capture."* Do not proceed.
+
+### Saving MCP screenshots to disk
+
+Most browser MCPs return screenshots in-memory and don't expose a disk path. To get them to disk for `agentclip slideshow add`, the typical recipe is:
+
+1. Capture the viewport via the MCP tool (e.g., `mcp__claude-in-chrome__computer` with `action=screenshot`).
+2. Use the MCP's javascript-execution tool to encode the captured image as a base64 data URL — most browser MCPs expose `chrome.tabs.captureVisibleTab` or an equivalent that returns a data URL directly.
+3. Decode to a PNG via Bash:
+   ```
+   echo "iVBORw0KGgo..." | base64 -d > /tmp/clip-01.png
+   ```
+
+The exact recipe varies per MCP. If your MCP exposes a `save_to_disk` parameter on screenshots, use that — but verify it actually returns a usable path (some MCPs document it but no-op).
+
+### Detect what's available before Step 0
+
+Before any clicking, confirm at least one method is usable:
+
+```
+# Check for the agentclip browser extra (Playwright)
+python -c "from playwright.sync_api import sync_playwright" 2>/dev/null && echo "playwright available"
+```
+
+Then check the available tools list for browser-driving MCPs (`mcp__*chrome*`, `mcp__*playwright*`, `mcp__*puppeteer*`). If neither is available, install `agentclip[browser]` or stop and tell the user. **Do not fall back to OS screen capture.**
+
 ## Step 0: Pick the spine and run type before you click
 
 A clip is a story, not a flipbook. Before clicking, answer two questions.
@@ -258,6 +298,7 @@ The tools persist your `write_token` locally. After `slideshow_create` returns, 
 - **Skipping the summary.** Without it, the clip has no spoken outro. With it, it's a deliverable.
 - **Asking before every slide.** Don't. Take the screenshots, write the captions, set the summary, hand over the URL.
 - **Faking it.** If you can't actually drive the browser (no MCP browser tool, no Playwright, no Chromium available in your runtime), say so explicitly: *"Real evidence would require a browser-driving tool. Recommending [the user runs it themselves / a different surface]."* Never invent screenshots.
+- **OS-level screen capture.** Never use `screencapture` (macOS), `scrot`, `gnome-screenshot`, or any tool that captures the OS screen. They include IDE windows, terminal panes, and the user's chat with the agent — all of which leak to a public URL when the clip ships. Use viewport-only capture: `agentclip[browser]` (Playwright), a browser MCP, or scripted Playwright/Puppeteer with a controlled viewport. See "Browser tooling" near the top of this skill.
 
 ## Worked example — walkthrough
 
