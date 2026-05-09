@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-09
+
+### Added
+
+- **Browser primitives in the MCP server.** Ten new tools — `browser_open`, `browser_navigate`, `browser_type`, `browser_click`, `browser_press_key`, `browser_wait_for_text`, `browser_screenshot`, `browser_get_text`, `browser_close`, `browser_list_sessions` — drive a Playwright Chromium instance from any MCP-speaking agent. `browser_screenshot` writes a viewport-only PNG to disk and returns the path; you pass that path straight into `slideshow_add_slide`. Sessions are scoped to the MCP server lifetime and torn down at exit. Closes the dogfood gap where agents had no canonical way to capture screenshots and would fall back to OS-level screencapture (which leaks IDE / terminal / chat windows to the public clip URL — a privacy bug).
+- `run_type` parameter on the `slideshow_create` MCP tool. The SDK already accepted it; the MCP tool didn't expose it, which forced agents to use `walkthrough` (the server-side default) regardless of trigger phrasing.
+
+### Changed
+
+- `SKILL.md` "Browser tooling" section now names the agentclip-mcp `browser_*` tools as Method 1 (the canonical path), with a worked example. Other browser MCPs and scripted Playwright remain as fallbacks.
+- `CLAUDE.md` documents how to register the agentclip-mcp server in `~/.claude/mcp.json` (and the local-checkout variant for development).
+
 ## [0.3.2] - 2026-05-07
 
 Fix: `pip install agentclip` was broken out of the box. The default backend URL pointed at the marketing host, which 308-redirects `/api/*` and Cloudflare strips the body — so every `slideshow create` failed with `expected 201`. Default now points at the API host directly.

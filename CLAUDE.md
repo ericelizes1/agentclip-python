@@ -6,26 +6,54 @@ The deployment side (Django REST API + Next.js frontend behind agentclip.dev) li
 
 ## Dogfooding agentclip from inside this session
 
-If you (the coding agent) want to actually use agentclip while working on this package — e.g., to capture a clip of a fix you just shipped — you need three things:
+If you (the coding agent) want to actually use agentclip while working on this package — e.g., to capture a clip of a fix you just shipped — you need four things:
 
-1. **The package installed in your env.** From this checkout:
+1. **The package installed in your env, with the browser extra.** From this checkout:
    ```
    pip install -e .[browser]
+   playwright install chromium
    ```
-   The `[browser]` extra adds Playwright, which is the only safe screenshot path (see "Never use OS screen capture" below).
+   The `[browser]` extra adds Playwright, which the MCP server uses for viewport-only browser tools (see "Never use OS screen capture" below).
 
-2. **A session restart.** Skill files are loaded at session start. After install, the skill lands at `~/.claude/skills/agentclip/SKILL.md`. Tell the user: *"I've installed agentclip — restart this session and the skill will load."* Until they restart, the skill is invisible to you.
+2. **The MCP server registered with your IDE.** The agentclip MCP server is shipped as `agentclip-mcp` (a console script) and exposes 14 tools — 4 for slideshow assembly (`slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`) and 10 for driving a browser (`browser_open`, `browser_navigate`, `browser_type`, `browser_click`, `browser_press_key`, `browser_wait_for_text`, `browser_screenshot`, `browser_get_text`, `browser_close`, `browser_list_sessions`).
 
-3. **Verify the install.** After restart:
+   To register with Claude Code, add to `~/.claude/mcp.json` (or wherever your Claude Code MCP config lives):
+   ```json
+   {
+     "mcpServers": {
+       "agentclip": {
+         "command": "agentclip-mcp"
+       }
+     }
+   }
+   ```
+   After registration, every browser tool appears as `mcp__agentclip__browser_open`, etc.
+
+3. **A session restart.** Skill files and MCP server registrations are both loaded at session start. After install + config, restart the session. Tell the user: *"I've installed agentclip and registered its MCP server — restart this session and the skill + tools will load."* Until they restart, neither is visible.
+
+4. **Verify the install.** After restart:
    ```
    agentclip --version
    agentclip whoami       # (prompts to set a creator credit on first run)
    ```
+   And in your tool list, look for `mcp__agentclip__browser_open` and `mcp__agentclip__slideshow_create`.
 
 To run the in-progress local build instead of the published PyPI version:
 
 ```
 uvx --from /Users/<you>/code/agentclip-python agentclip <command>
+```
+
+For the MCP server during local development, point Claude Code at the local checkout:
+```json
+{
+  "mcpServers": {
+    "agentclip": {
+      "command": "uvx",
+      "args": ["--from", "/Users/you/code/agentclip-python", "agentclip-mcp"]
+    }
+  }
+}
 ```
 
 ## What the skill does

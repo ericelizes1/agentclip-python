@@ -31,9 +31,9 @@ Capturing screenshots is the agent's responsibility. The slideshow tools accept 
 
 ### Method priority (high to low)
 
-1. **`agentclip[browser]` (Playwright)** — preferred when installed. `pip install agentclip[browser]` adds Playwright with a controlled, viewport-only Chromium. No other windows can leak in. If the package is installed in your environment, prefer this over MCP tools because the skill is written assuming this surface.
-2. **Browser MCP tools** (e.g., `mcp__claude-in-chrome__*`, Playwright MCP, Puppeteer MCP) — fine. These capture the browser tab only, not the OS screen. The challenge is getting the screenshot to disk for `agentclip slideshow add`. See "Saving MCP screenshots to disk" below.
-3. **Your own scripted Playwright / Puppeteer** — fine. Use a fixed viewport (e.g., 1280×720 or 1568×768) and write screenshots straight to disk.
+1. **agentclip-mcp `browser_*` tools** — preferred. The agentclip MCP server (run with `agentclip-mcp` or registered in your IDE's MCP config) ships viewport-only browser primitives: `browser_open`, `browser_navigate`, `browser_type`, `browser_click`, `browser_press_key`, `browser_wait_for_text`, `browser_screenshot` (returns a disk path), `browser_get_text`, `browser_close`. These use Playwright under the hood with a fixed viewport, so screenshots are *structurally* tab-scoped — they can never include the OS desktop, IDE window, or other tabs. `browser_screenshot` writes a PNG to disk and returns the path; you pass that path straight into `slideshow_add_slide`. Requires `pip install 'agentclip[browser]' && playwright install chromium`. **This is the canonical path.**
+2. **Other browser MCP tools** (e.g., `mcp__claude-in-chrome__*`, Playwright MCP, Puppeteer MCP) — fine if agentclip-mcp's browser tools aren't available. These also capture the tab only, not the OS screen. The challenge is getting the screenshot to disk for `agentclip slideshow add`. See "Saving MCP screenshots to disk" below.
+3. **Your own scripted Playwright / Puppeteer** — fine. Use a fixed viewport (e.g., 1440×900 or 1280×720) and write screenshots straight to disk.
 
 ### Anti-pattern: OS screen capture
 
@@ -56,14 +56,29 @@ The exact recipe varies per MCP. If your MCP exposes a `save_to_disk` parameter 
 
 ### Detect what's available before Step 0
 
-Before any clicking, confirm at least one method is usable:
+Before any clicking, confirm at least one method is usable. Check in priority order:
+
+1. **agentclip-mcp browser tools** — look for `browser_open` / `browser_screenshot` etc. in your tool list. If present, use them. (To enable: `pip install 'agentclip[browser]'`, then register the `agentclip-mcp` server in your IDE's MCP config; restart the session.)
+2. **Other browser MCPs** — look for `mcp__*chrome*`, `mcp__*playwright*`, `mcp__*puppeteer*` in your tool list.
+3. **Local Playwright** — `python -c "from playwright.sync_api import sync_playwright" 2>/dev/null && echo "playwright available"`.
+
+If none are available, install `agentclip[browser]` or stop and tell the user. **Do not fall back to OS screen capture.**
+
+### Worked example: the canonical agentclip-mcp flow
 
 ```
-# Check for the agentclip browser extra (Playwright)
-python -c "from playwright.sync_api import sync_playwright" 2>/dev/null && echo "playwright available"
+browser_open(url="https://v0.app", viewport_width=1440, viewport_height=900)
+  -> {"session_id": "a1b2c3d4e5f6", "title": "v0 by Vercel", ...}
+
+browser_screenshot(session_id="a1b2c3d4e5f6")
+  -> {"path": "/tmp/agentclip-shots/a1b2c3d4e5f6-1715215200000.png", "bytes": 142031}
+
+slideshow_add_slide(slideshow_id="ss_xyz",
+                    media_path="/tmp/agentclip-shots/a1b2c3d4e5f6-1715215200000.png",
+                    caption="...")
 ```
 
-Then check the available tools list for browser-driving MCPs (`mcp__*chrome*`, `mcp__*playwright*`, `mcp__*puppeteer*`). If neither is available, install `agentclip[browser]` or stop and tell the user. **Do not fall back to OS screen capture.**
+That's the entire bytes-to-disk problem solved: `browser_screenshot` writes the file, returns the path, and `slideshow_add_slide` reads it. No base64 dance, no custom Python script, no leaked desktop.
 
 ## Step 0: Pick the spine and run type before you click
 
