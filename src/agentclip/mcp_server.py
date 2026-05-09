@@ -266,19 +266,69 @@ _DEFAULT_SHOT_DIR = Path('/tmp/agentclip-shots')
 
 
 def _require_playwright() -> Any:
-    """Lazy-import Playwright so ``agentclip[browser]`` is only required
-    when an agent actually invokes a browser tool. The import error gets
-    rewritten into a message the agent can act on, because raw
-    ``ModuleNotFoundError`` traces are hard to recover from."""
+    """Import Playwright. Playwright is a hard dependency since 0.5.0,
+    so this should always succeed; the helper exists only to rewrite
+    the unlikely import error into something an agent can act on (e.g.
+    if a user installed agentclip with `--no-deps` and forgot)."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise RuntimeError(
-            "Browser tools require Playwright. Install with: "
-            "`pip install 'agentclip[browser]'` then "
-            "`playwright install chromium`."
+            "Playwright is missing — agentclip ships it as a core "
+            "dependency, so this usually means agentclip was installed "
+            "with --no-deps or in a stale env. Run: "
+            "`pip install --upgrade agentclip`"
         ) from exc
     return sync_playwright
+
+
+def _ensure_chromium_installed(verbose: bool = True) -> None:
+    """Make sure the Chromium binary Playwright needs is on disk.
+
+    The Chromium download is ~200MB, so we don't ship it as a wheel —
+    Playwright maintains its own per-browser binary cache under
+    ``~/Library/Caches/ms-playwright`` (macOS) etc. Calling
+    ``playwright install chromium`` is idempotent: it no-ops when the
+    binary already exists, and downloads it (with a TTY progress bar)
+    when it doesn't.
+
+    Called at the start of ``browser_open`` so users hit the download
+    once, on first browser-tool use, rather than during ``pip install``
+    when they may not even need a browser. The ~1 minute of first-run
+    latency is the price of a 200MB binary not bloating the wheel.
+    """
+    import subprocess
+    import sys
+
+    sync_playwright = _require_playwright()
+    # Cheap probe: try to read the chromium executable path. Playwright
+    # raises an Error if the browser isn't installed for the current
+    # version — that's our trigger to install.
+    try:
+        with sync_playwright() as p:
+            _ = p.chromium.executable_path
+            # `executable_path` returns a string even when the binary
+            # is missing (it's where the binary *would* be). Verify
+            # it actually exists before declaring success.
+            if Path(_).exists():
+                return
+    except Exception:
+        # Any failure during probe → fall through to install.
+        pass
+
+    if verbose:
+        print(
+            'agentclip: Chromium not found, downloading via '
+            '`playwright install chromium` (~200MB, one-time)…',
+            file=sys.stderr,
+        )
+    # `playwright install` lives in the same env as the Python
+    # interpreter that imported playwright; reach it via -m so we don't
+    # depend on `playwright` being on PATH.
+    subprocess.run(
+        [sys.executable, '-m', 'playwright', 'install', 'chromium'],
+        check=True,
+    )
 
 
 def _get_session(session_id: str) -> _BrowserSession:
@@ -368,6 +418,7 @@ def browser_open(
     only contain the browser tab, never the OS desktop. This is the
     structural reason to use these tools instead of OS screencapture.
     """
+    _ensure_chromium_installed()
     sync_playwright = _require_playwright()
     pw_cm = sync_playwright()
     pw = pw_cm.start()

@@ -4,7 +4,7 @@ build-backend = 'hatchling.build'
 
 [project]
 name = 'agentclip'
-version = '0.4.0'
+version = '0.5.0'
 description = 'Turn AI agent QA runs into shareable slideshows.'
 readme = 'README.md'
 requires-python = '>=3.11'
@@ -23,19 +23,19 @@ dependencies = [
     'typer>=0.12',
     'mcp>=1.0',
     'pydantic>=2.6',
+    # Playwright is core because the MCP server's browser_* tools are the
+    # canonical capture path. Bundling it removes the "wait you also need
+    # the [browser] extra" friction that bit every dogfooder who followed
+    # the README literally. The Chromium binary itself (~200MB) is
+    # installed lazily on first browser_open — see mcp_server.py.
+    'playwright>=1.49',
 ]
 
 [project.optional-dependencies]
-# Browser-driving extras. Pulls in Playwright so `agentclip clip` and
-# the MCP server can drive a real Chromium instance. Skipped by default
-# because most agent runtimes (Claude Code's tool harness, e.g.) bring
-# their own browser substrate; only standalone CLI users need this.
-#
-# Install with: pip install 'agentclip[browser]'
-# First-run setup will then download Chromium binaries automatically.
-browser = [
-    'playwright>=1.49',
-]
+# Empty alias kept so `pip install 'agentclip[browser]'` (in old docs,
+# install scripts, dotfiles) still resolves cleanly. The deps it used
+# to add are in core now.
+browser = []
 
 dev = [
     'pytest>=8.0',

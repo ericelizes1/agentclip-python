@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-09
+
+### Changed
+
+- **`pip install agentclip` now bundles Playwright by default.** The `[browser]` extra was scaffolding from when the MCP server was slideshow-only; now that browser primitives are the canonical capture path, hiding them behind an extra was friction every dogfooder hit on first run. Single install command, the canonical path works out of the box.
+- **Chromium binaries (~200MB) install lazily on first `browser_open` call**, not at `pip install` time. First browser-tool use takes ~1 minute to download Chromium; every subsequent call is near-instant. CI / non-browser users who never call `browser_open` never pay the Chromium cost.
+- `[browser]` extra is preserved as an empty alias so `pip install 'agentclip[browser]'` (in old docs, install scripts, dotfiles) still resolves cleanly.
+- `SKILL.md` and `CLAUDE.md` scrubbed of `[browser]` install instructions — they're docs noise now that the deps are core.
+
+### Migration
+
+If you previously installed with `pip install 'agentclip[browser]'`, that command still works exactly the same. If you previously installed with `pip install agentclip` and then needed to add the extra later, that step is gone — bare install is enough.
+
 ## [0.4.0] - 2026-05-09
 
 ### Added

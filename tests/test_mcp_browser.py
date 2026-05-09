@@ -92,9 +92,10 @@ needs_browser = pytest.mark.skipif(
 
 
 def test_require_playwright_message_when_missing(monkeypatch):
-    """If playwright isn't importable, the helper should raise a message
-    the agent can act on — pointing at the install command, not a stack
-    trace."""
+    """Playwright is a core dependency since 0.5.0 so this should
+    basically always succeed. The helper still rewrites the unlikely
+    import error (e.g. user installed with --no-deps) into something
+    actionable — pin that wording so the agent's next step is clear."""
     import builtins
 
     real_import = builtins.__import__
@@ -109,8 +110,29 @@ def test_require_playwright_message_when_missing(monkeypatch):
     with pytest.raises(RuntimeError) as exc:
         mcp_server._require_playwright()
     msg = str(exc.value)
-    assert "agentclip[browser]" in msg
-    assert "playwright install chromium" in msg
+    # Should point at the recovery action, not at the old [browser] extra.
+    assert "pip install" in msg
+    assert "agentclip" in msg
+
+
+def test_ensure_chromium_installed_skips_when_present(monkeypatch):
+    """If Chromium is already on disk, _ensure_chromium_installed must
+    not shell out to `playwright install`. Pin this so first-use
+    latency stays cold-start-only — every subsequent browser_open
+    should be near-instant."""
+    monkeypatch.setattr(
+        Path, 'exists', lambda self: True
+    )
+    called = {'n': 0}
+
+    def fake_run(*args, **kwargs):
+        called['n'] += 1
+        return None
+
+    import subprocess
+    monkeypatch.setattr(subprocess, 'run', fake_run)
+    mcp_server._ensure_chromium_installed(verbose=False)
+    assert called['n'] == 0
 
 
 @needs_browser

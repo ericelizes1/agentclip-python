@@ -8,12 +8,11 @@ The deployment side (Django REST API + Next.js frontend behind agentclip.dev) li
 
 If you (the coding agent) want to actually use agentclip while working on this package — e.g., to capture a clip of a fix you just shipped — you need four things:
 
-1. **The package installed in your env, with the browser extra.** From this checkout:
+1. **The package installed in your env.** From this checkout:
    ```
-   pip install -e .[browser]
-   playwright install chromium
+   pip install -e .
    ```
-   The `[browser]` extra adds Playwright, which the MCP server uses for viewport-only browser tools (see "Never use OS screen capture" below).
+   Playwright is a core dependency since 0.5.0 — no separate `[browser]` extra. The Chromium binary itself (~200MB) downloads lazily on first `browser_open` call, so `pip install` stays fast.
 
 2. **The MCP server registered with your IDE.** The agentclip MCP server is shipped as `agentclip-mcp` (a console script) and exposes 14 tools — 4 for slideshow assembly (`slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`) and 10 for driving a browser (`browser_open`, `browser_navigate`, `browser_type`, `browser_click`, `browser_press_key`, `browser_wait_for_text`, `browser_screenshot`, `browser_get_text`, `browser_close`, `browser_list_sessions`).
 
@@ -72,7 +71,7 @@ The full rules — caption voice, banned phrases, run-type-specific guidance —
 When making clips, do **not** use `screencapture` (macOS), `scrot` (Linux), `gnome-screenshot`, or any OS-level capture tool. They include the IDE, terminal panes, and the user's chat with you — all of which become public when the clip ships.
 
 Use viewport-only capture only:
-- **`agentclip[browser]` (Playwright)** — the canonical path; install with `pip install agentclip[browser]`
+- **agentclip's `browser_*` MCP tools** (Playwright under the hood) — the canonical path; ships in core since 0.5.0
 - A browser MCP tool (Chrome / Playwright / Puppeteer) — see SKILL.md "Saving MCP screenshots to disk" for the data-URL → file recipe
 - Your own scripted Playwright / Puppeteer with a fixed viewport
 

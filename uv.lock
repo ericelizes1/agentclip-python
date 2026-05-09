@@ -4,19 +4,17 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "agentclip"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "mcp" },
+    { name = "playwright" },
     { name = "pydantic" },
     { name = "typer" },
 ]
 
 [package.optional-dependencies]
-browser = [
-    { name = "playwright" },
-]
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -28,7 +26,7 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", specifier = ">=1.0" },
-    { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.49" },
+    { name = "playwright", specifier = ">=1.49" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
