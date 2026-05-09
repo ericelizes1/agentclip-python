@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-09
+
+### Added
+
+- **First-run setup now auto-registers the MCP server** in `~/.claude/mcp.json`. Closes the last manual step in onboarding — `pip install agentclip` followed by a Claude Code restart is now the entire setup. The install is idempotent and preserves any other MCP servers you have registered.
+- **`agentclip install-mcp`** CLI command — re-runs the registration on demand (after a config reset, a different config path via `--config`, etc.). Honors `AGENTCLIP_MCP_CONFIG` for non-default Claude Code installs and tests.
+- **`agentclip uninstall-mcp`** CLI command — removes the agentclip entry. No-op when the file or entry isn't present. Other servers untouched.
+
+### Changed
+
+- Eager Chromium install removed from first-run setup — it became dead code in 0.5.0 when Chromium install moved to lazy-on-first-`browser_open`. Setup is now skill install + MCP registration + marker write.
+
+### Fixed
+
+- `__version__` now reads from package metadata via `importlib.metadata` instead of a hardcoded constant, so `agentclip version` always reflects what's actually installed. Hardcoded value had drifted four releases behind.
+
 ## [0.5.0] - 2026-05-09
 
 ### Changed

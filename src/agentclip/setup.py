@@ -25,8 +25,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
-import sys
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -104,62 +102,118 @@ def _install_skill(quiet: bool, skill_dir: Path | None = None) -> Path | None:
     return dest
 
 
-def _has_browser_extra() -> bool:
-    """Detect whether the `[browser]` optional dep is installed.
+_DEFAULT_MCP_CONFIG_PATH = Path.home() / '.claude' / 'mcp.json'
+_MCP_SERVER_NAME = 'agentclip'
+_MCP_SERVER_COMMAND = 'agentclip-mcp'
 
-    Importing playwright is the cheapest reliable signal — `importlib.util.
-    find_spec` is fast (no module init) and returns None when the dep
-    isn't in the active environment.
+
+def default_mcp_config_path() -> Path:
+    """Resolve the Claude Code MCP config path, honoring an env override.
+
+    Override via AGENTCLIP_MCP_CONFIG so tests don't write to the user's
+    real config and so power users with non-default Claude Code installs
+    can point us at the right file.
     """
-    from importlib.util import find_spec
+    override = os.environ.get('AGENTCLIP_MCP_CONFIG')
+    if override:
+        return Path(override).expanduser()
+    return _DEFAULT_MCP_CONFIG_PATH
 
-    return find_spec('playwright') is not None
 
+def _read_mcp_config(path: Path) -> dict:
+    """Load the MCP config JSON, returning {} for missing or empty files.
 
-def _install_playwright_chromium(quiet: bool) -> bool:
-    """Run `playwright install chromium` if the extra is present.
-
-    Returns True when the install succeeds (or is unnecessary), False when
-    it fails. Setup continues either way — a missing browser is a clear
-    error at clip-time with a useful pointer, not a setup-blocker.
+    Raises ValueError with a useful message on malformed JSON — the user
+    needs to know we won't blindly overwrite a config we can't parse.
     """
-    if not _has_browser_extra():
-        if not quiet:
-            print(
-                '  browser extra not installed (skipping playwright); '
-                'pip install agentclip[browser] to enable.'
-            )
-        return True
-
-    if not quiet:
-        print('  installing playwright chromium...')
+    if not path.exists() or path.stat().st_size == 0:
+        return {}
     try:
-        result = subprocess.run(
-            [sys.executable, '-m', 'playwright', 'install', 'chromium'],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        if not quiet:
-            print(
-                f'  playwright install failed: {exc}. '
-                f'Run `playwright install chromium` manually if you need browsers.'
-            )
-        return False
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Can't safely modify {path} — JSON parse failed at "
+            f'line {exc.lineno}: {exc.msg}. Fix the file by hand or '
+            f'delete it and re-run `agentclip install-mcp`.'
+        ) from exc
 
-    if result.returncode != 0:
-        if not quiet:
-            stderr_tail = (result.stderr or '').splitlines()[-3:]
-            print(f'  playwright install exited {result.returncode}.')
-            for line in stderr_tail:
-                print(f'    {line}')
-        return False
+
+def install_mcp_registration(
+    *,
+    config_path: Path | None = None,
+    quiet: bool = False,
+) -> tuple[Path, str]:
+    """Add (or update) the agentclip entry in Claude Code's mcp.json.
+
+    Idempotent: re-running with the same end state is a no-op (the file
+    still gets rewritten so its mtime is current, but the bytes are
+    unchanged). Preserves any other MCP servers the user has registered.
+
+    Returns ``(path, status)`` where status is one of: ``added``,
+    ``updated``, ``unchanged``. The CLI uses status to print the right
+    message — first install vs. upgrade vs. nothing-to-do.
+    """
+    target = config_path or default_mcp_config_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    config = _read_mcp_config(target)
+    servers = config.setdefault('mcpServers', {})
+    desired = {'command': _MCP_SERVER_COMMAND}
+
+    existing = servers.get(_MCP_SERVER_NAME)
+    if existing == desired:
+        status = 'unchanged'
+    elif existing is None:
+        servers[_MCP_SERVER_NAME] = desired
+        status = 'added'
+    else:
+        servers[_MCP_SERVER_NAME] = desired
+        status = 'updated'
+
+    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
 
     if not quiet:
-        print('  playwright chromium ready.')
-    return True
+        if status == 'unchanged':
+            print(f'  mcp registration already current at {target}')
+        elif status == 'added':
+            print(f'  registered MCP server in {target}')
+        else:
+            print(f'  updated MCP server entry in {target}')
+
+    return target, status
+
+
+def uninstall_mcp_registration(
+    *,
+    config_path: Path | None = None,
+    quiet: bool = False,
+) -> tuple[Path, str]:
+    """Remove the agentclip entry from Claude Code's mcp.json.
+
+    Other registered servers are preserved. If the file doesn't exist or
+    didn't have an agentclip entry, this is a no-op.
+
+    Returns ``(path, status)`` where status is ``removed`` or
+    ``not_present``.
+    """
+    target = config_path or default_mcp_config_path()
+    if not target.exists():
+        if not quiet:
+            print(f'  no mcp config at {target} (nothing to uninstall)')
+        return target, 'not_present'
+
+    config = _read_mcp_config(target)
+    servers = config.get('mcpServers', {})
+    if _MCP_SERVER_NAME not in servers:
+        if not quiet:
+            print(f'  no agentclip entry in {target} (nothing to uninstall)')
+        return target, 'not_present'
+
+    del servers[_MCP_SERVER_NAME]
+    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
+    if not quiet:
+        print(f'  removed agentclip entry from {target}')
+    return target, 'removed'
 
 
 def run_setup(
@@ -185,7 +239,13 @@ def run_setup(
         print('agentclip: first-run setup...')
 
     _install_skill(quiet=quiet, skill_dir=skill_dir)
-    _install_playwright_chromium(quiet=quiet)
+    try:
+        install_mcp_registration(quiet=quiet)
+    except ValueError as exc:
+        # User has a malformed mcp.json. Don't block the rest of setup;
+        # surface the error and let them re-run install-mcp once they fix it.
+        if not quiet:
+            print(f'  mcp registration skipped: {exc}')
     write_marker(marker_path=target)
 
     if not quiet:

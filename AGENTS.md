@@ -14,25 +14,15 @@ If you (the coding agent) want to actually use agentclip while working on this p
    ```
    Playwright is a core dependency since 0.5.0 — no separate `[browser]` extra. The Chromium binary itself (~200MB) downloads lazily on first `browser_open` call, so `pip install` stays fast.
 
-2. **The MCP server registered with your IDE.** The agentclip MCP server is shipped as `agentclip-mcp` (a console script) and exposes 14 tools — 4 for slideshow assembly (`slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`) and 10 for driving a browser (`browser_open`, `browser_navigate`, `browser_type`, `browser_click`, `browser_press_key`, `browser_wait_for_text`, `browser_screenshot`, `browser_get_text`, `browser_close`, `browser_list_sessions`).
+2. **The MCP server registered with Claude Code.** Since 0.6.0 first-run setup does this automatically — `pip install agentclip` followed by any `agentclip` invocation writes the registration into `~/.claude/mcp.json` for you, preserving any other servers you have configured. To re-run on demand: `agentclip install-mcp`. To remove: `agentclip uninstall-mcp`.
 
-   To register with Claude Code, add to `~/.claude/mcp.json` (or wherever your Claude Code MCP config lives):
-   ```json
-   {
-     "mcpServers": {
-       "agentclip": {
-         "command": "agentclip-mcp"
-       }
-     }
-   }
-   ```
-   After registration, every browser tool appears as `mcp__agentclip__browser_open`, etc.
+   The MCP server is shipped as `agentclip-mcp` (a console script) and exposes 14 tools — 4 for slideshow assembly (`slideshow_create`, `slideshow_add_slide`, `slideshow_update_slide`, `slideshow_set_summary`) and 10 for driving a browser (`browser_open`, `browser_navigate`, `browser_type`, `browser_click`, `browser_press_key`, `browser_wait_for_text`, `browser_screenshot`, `browser_get_text`, `browser_close`, `browser_list_sessions`).
 
-3. **A session restart.** Skill files and MCP server registrations are both loaded at session start. After install + config, restart the session. Tell the user: *"I've installed agentclip and registered its MCP server — restart this session and the skill + tools will load."* Until they restart, neither is visible.
+3. **A session restart.** Skill files and MCP server registrations are both loaded at Claude Code start. Tell the user: *"agentclip is installed and registered — restart this session and the skill + tools will load."*
 
 4. **Verify the install.** After restart:
    ```
-   agentclip --version
+   agentclip version
    agentclip whoami       # (prompts to set a creator credit on first run)
    ```
    And in your tool list, look for `mcp__agentclip__browser_open` and `mcp__agentclip__slideshow_create`.
@@ -43,17 +33,19 @@ To run the in-progress local build instead of the published PyPI version:
 uvx --from /Users/<you>/code/agentclip-python agentclip <command>
 ```
 
-For the MCP server during local development, point Claude Code at the local checkout:
-```json
-{
-  "mcpServers": {
-    "agentclip": {
-      "command": "uvx",
-      "args": ["--from", "/Users/you/code/agentclip-python", "agentclip-mcp"]
+For the MCP server during local development, you can either:
+- Run `agentclip install-mcp` after `pip install -e .` (the registration just points at the `agentclip-mcp` script in your dev venv), or
+- Manually point Claude Code at the local checkout via uvx:
+  ```json
+  {
+    "mcpServers": {
+      "agentclip": {
+        "command": "uvx",
+        "args": ["--from", "/Users/you/code/agentclip-python", "agentclip-mcp"]
+      }
     }
   }
-}
-```
+  ```
 
 ## What the skill does
 

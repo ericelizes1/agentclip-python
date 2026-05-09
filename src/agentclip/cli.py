@@ -63,7 +63,9 @@ app.add_typer(auth_app, name='auth')
 # setup. `version` is a status query, `setup` runs setup itself, and
 # `install-skill` is the manual fallback for the same step setup
 # performs — running it nested would be confusing.
-_SKIP_LAZY_SETUP = frozenset({'version', 'setup', 'install-skill'})
+_SKIP_LAZY_SETUP = frozenset(
+    {'version', 'setup', 'install-skill', 'install-mcp', 'uninstall-mcp'}
+)
 
 
 @app.callback()
@@ -665,6 +667,68 @@ def install_skill(
                 label += f' -> {url.strip()}'
             typer.echo(f'  saved. {label} will be credited on every clip.')
             typer.echo("  change anytime: agentclip whoami --set '...' --url '...'")
+
+
+# ---------- install-mcp / uninstall-mcp ----------
+
+
+@app.command('install-mcp')
+def install_mcp(
+    config: Path = typer.Option(
+        None,
+        '--config',
+        help=(
+            "Path to Claude Code's mcp.json. Defaults to ~/.claude/mcp.json. "
+            'Override via AGENTCLIP_MCP_CONFIG.'
+        ),
+    ),
+) -> None:
+    """Register the agentclip MCP server in Claude Code's config.
+
+    Idempotent and safe — reads any existing mcp.json, adds (or updates)
+    just the agentclip entry, and preserves every other server you have
+    registered. Restart Claude Code after running this for the new tools
+    to load.
+
+    First-run setup runs this automatically, so most users never call it
+    directly. Manual invocation is for re-running after you reset your
+    config or moved the file.
+    """
+    from .setup import install_mcp_registration
+
+    try:
+        path, status = install_mcp_registration(config_path=config, quiet=True)
+    except ValueError as exc:
+        raise _bail(str(exc)) from exc
+
+    typer.echo(f'mcp registration {status}: {path}')
+    if status in {'added', 'updated'}:
+        typer.echo('  restart Claude Code to load the new tools.')
+
+
+@app.command('uninstall-mcp')
+def uninstall_mcp(
+    config: Path = typer.Option(
+        None,
+        '--config',
+        help='Path to mcp.json. Defaults to ~/.claude/mcp.json.',
+    ),
+) -> None:
+    """Remove the agentclip MCP server from Claude Code's config.
+
+    Other registered servers are preserved. No-op if the file or entry
+    isn't present. Safe to run on a config that's never seen agentclip.
+    """
+    from .setup import uninstall_mcp_registration
+
+    try:
+        path, status = uninstall_mcp_registration(config_path=config, quiet=True)
+    except ValueError as exc:
+        raise _bail(str(exc)) from exc
+
+    typer.echo(f'mcp registration {status}: {path}')
+    if status == 'removed':
+        typer.echo('  restart Claude Code to drop the tools from the running session.')
 
 
 # ---------- whoami ----------

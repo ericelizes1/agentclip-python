@@ -68,19 +68,27 @@ def test_write_marker_creates_parent_dir_and_records_version(marker: Path) -> No
 # ---------- run_setup idempotence ----------
 
 
-def test_run_setup_short_circuits_when_marker_exists(marker: Path, skill_dir: Path) -> None:
+def test_run_setup_short_circuits_when_marker_exists(
+    marker: Path, skill_dir: Path, monkeypatch
+) -> None:
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text('done')
-    with patch.object(setup_mod, '_install_playwright_chromium') as mock_browser:
+    monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(skill_dir / 'mcp.json'))
+    with patch.object(setup_mod, 'install_mcp_registration') as mock_mcp:
         ran = setup_mod.run_setup(marker_path=marker, skill_dir=skill_dir, quiet=True)
     assert ran is False
-    mock_browser.assert_not_called()
+    mock_mcp.assert_not_called()
 
 
-def test_run_setup_force_runs_even_with_marker(marker: Path, skill_dir: Path) -> None:
+def test_run_setup_force_runs_even_with_marker(
+    marker: Path, skill_dir: Path, monkeypatch
+) -> None:
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text('done')
-    with patch.object(setup_mod, '_install_playwright_chromium', return_value=True) as mock_browser:
+    monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(skill_dir / 'mcp.json'))
+    with patch.object(
+        setup_mod, 'install_mcp_registration', return_value=(skill_dir, 'added')
+    ) as mock_mcp:
         ran = setup_mod.run_setup(
             marker_path=marker,
             skill_dir=skill_dir,
@@ -88,11 +96,16 @@ def test_run_setup_force_runs_even_with_marker(marker: Path, skill_dir: Path) ->
             force=True,
         )
     assert ran is True
-    mock_browser.assert_called_once()
+    mock_mcp.assert_called_once()
 
 
-def test_run_setup_writes_marker_after_first_run(marker: Path, skill_dir: Path) -> None:
-    with patch.object(setup_mod, '_install_playwright_chromium', return_value=True):
+def test_run_setup_writes_marker_after_first_run(
+    marker: Path, skill_dir: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(skill_dir / 'mcp.json'))
+    with patch.object(
+        setup_mod, 'install_mcp_registration', return_value=(skill_dir, 'added')
+    ):
         setup_mod.run_setup(marker_path=marker, skill_dir=skill_dir, quiet=True)
     assert marker.exists()
     body = json.loads(marker.read_text())
@@ -118,54 +131,10 @@ def test_install_skill_is_idempotent(skill_dir: Path) -> None:
     assert first == second
 
 
-# ---------- browser extra detection ----------
-
-
-def test_install_playwright_skips_when_extra_missing() -> None:
-    """Without [browser] extra installed, the function reports success
-    without invoking subprocess at all."""
-    with (
-        patch.object(setup_mod, '_has_browser_extra', return_value=False),
-        patch.object(subprocess, 'run') as mock_run,
-    ):
-        ok = setup_mod._install_playwright_chromium(quiet=True)
-    assert ok is True
-    mock_run.assert_not_called()
-
-
-def test_install_playwright_runs_command_when_extra_present() -> None:
-    fake_result = subprocess.CompletedProcess(args=[], returncode=0, stdout='', stderr='')
-    with (
-        patch.object(setup_mod, '_has_browser_extra', return_value=True),
-        patch.object(subprocess, 'run', return_value=fake_result) as mock_run,
-    ):
-        ok = setup_mod._install_playwright_chromium(quiet=True)
-    assert ok is True
-    mock_run.assert_called_once()
-    cmd = mock_run.call_args.args[0]
-    assert 'playwright' in cmd
-    assert 'install' in cmd
-    assert 'chromium' in cmd
-
-
-def test_install_playwright_returns_false_on_nonzero_exit() -> None:
-    fake_result = subprocess.CompletedProcess(args=[], returncode=1, stdout='', stderr='boom')
-    with (
-        patch.object(setup_mod, '_has_browser_extra', return_value=True),
-        patch.object(subprocess, 'run', return_value=fake_result),
-    ):
-        ok = setup_mod._install_playwright_chromium(quiet=True)
-    assert ok is False
-
-
-def test_install_playwright_handles_timeout() -> None:
-    with (
-        patch.object(setup_mod, '_has_browser_extra', return_value=True),
-        patch.object(subprocess, 'run', side_effect=subprocess.TimeoutExpired(cmd='', timeout=1)),
-    ):
-        ok = setup_mod._install_playwright_chromium(quiet=True)
-    assert ok is False
-
+# Browser/Chromium install moved out of setup in 0.5.0 — Chromium now
+# downloads lazily on first browser_open call (see mcp_server.py). The
+# previous suite of _install_playwright_chromium tests was removed
+# alongside that function.
 
 # ---------- ensure_setup (the lazy hot path) ----------
 
