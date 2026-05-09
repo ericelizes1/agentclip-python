@@ -152,8 +152,8 @@ def slideshow_create(
         '-T',
         help=(
             'Run type — drives the narration voice + pacing. One of: '
-            'bug_repro, smoke_test, demo, onboarding_eval, '
-            'competitive_teardown, generic. Defaults to generic.'
+            'walkthrough (feature reveal), guide (how-to), bug (repro). '
+            'Defaults to walkthrough.'
         ),
     ),
     as_json: bool = typer.Option(False, '--json', help='Emit JSON instead of a summary.'),
