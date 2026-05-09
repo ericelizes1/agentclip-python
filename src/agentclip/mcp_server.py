@@ -253,16 +253,48 @@ def _resolve_token(slideshow_id: str) -> str:
 # agent's IDE session, so a dict in module scope is the right scope.
 # Each session pins its own Playwright runtime + browser + context + page;
 # closing the server (atexit) tears them down.
+#
+# Threading model: FastMCP runs tool handlers inside an asyncio loop, but
+# Playwright's sync API actively refuses to coexist with one
+# ("It looks like you are using Playwright Sync API inside the asyncio
+# loop"). We resolve this by routing every browser_* call through a single
+# dedicated worker thread. The thread has no event loop of its own, so
+# sync_playwright works there; reusing the SAME thread across calls is
+# critical because Playwright sync objects are thread-bound (a browser
+# created in one thread can't be driven from another).
 
+import asyncio
 import atexit
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 _BrowserSession = dict[str, Any]
 _browser_sessions: dict[str, _BrowserSession] = {}
 _DEFAULT_SHOT_DIR = Path('/tmp/agentclip-shots')
+
+# max_workers=1 makes this effectively a serializer — all browser ops run
+# in the same OS thread, in the order they're submitted. Cheap and exactly
+# what Playwright's sync API needs.
+_browser_executor = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix='agentclip-browser'
+)
+
+
+async def _run_in_browser_thread(func, *args, **kwargs):
+    """Run a sync browser helper in the dedicated worker thread.
+
+    All Playwright-touching work goes through this; the asyncio event
+    loop stays free, the sync API doesn't see a competing loop, and
+    Playwright objects all live in the same thread for their entire
+    lifetime.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _browser_executor, lambda: func(*args, **kwargs)
+    )
 
 
 def _require_playwright() -> Any:
@@ -341,6 +373,186 @@ def _get_session(session_id: str) -> _BrowserSession:
     return session
 
 
+# --- sync implementations ---
+# All the actual Playwright work happens here, in plain sync functions.
+# Each is invoked through `_run_in_browser_thread` from the public async
+# @mcp.tool wrappers below. Splitting like this lets the existing pytest
+# suite keep calling the *_impl helpers directly (they're pure sync), while
+# the FastMCP-facing functions stay async — the shape FastMCP requires.
+
+
+def _browser_open_impl(
+    url: str,
+    viewport_width: int,
+    viewport_height: int,
+    headless: bool,
+    wait_until: str,
+) -> dict:
+    _ensure_chromium_installed()
+    sync_playwright = _require_playwright()
+    pw_cm = sync_playwright()
+    pw = pw_cm.start()
+    browser = pw.chromium.launch(headless=headless)
+    context = browser.new_context(
+        viewport={'width': viewport_width, 'height': viewport_height}
+    )
+    page = context.new_page()
+    page.goto(url, wait_until=wait_until)
+
+    session_id = uuid.uuid4().hex[:12]
+    _browser_sessions[session_id] = {
+        'playwright_cm': pw_cm,
+        'playwright': pw,
+        'browser': browser,
+        'context': context,
+        'page': page,
+    }
+    return {
+        'session_id': session_id,
+        'url': page.url,
+        'title': page.title(),
+        'viewport': {'width': viewport_width, 'height': viewport_height},
+    }
+
+
+def _browser_navigate_impl(session_id: str, url: str, wait_until: str) -> dict:
+    session = _get_session(session_id)
+    session['page'].goto(url, wait_until=wait_until)
+    return {'url': session['page'].url, 'title': session['page'].title()}
+
+
+def _browser_type_impl(
+    session_id: str,
+    text: str,
+    placeholder: str | None,
+    selector: str | None,
+    role: str | None,
+    delay_ms: int,
+) -> dict:
+    session = _get_session(session_id)
+    page = session['page']
+
+    target = None
+    if placeholder is not None:
+        target = page.get_by_placeholder(placeholder).first
+    elif selector is not None:
+        target = page.locator(selector).first
+    elif role is not None:
+        target = page.get_by_role(role).first
+
+    if target is not None:
+        target.click()
+        target.type(text, delay=delay_ms)
+        try:
+            box = target.bounding_box()
+        except Exception:
+            box = None
+    else:
+        page.keyboard.type(text, delay=delay_ms)
+        box = None
+
+    return {'typed_chars': len(text), 'target_box': box}
+
+
+def _browser_click_impl(
+    session_id: str,
+    selector: str | None,
+    text: str | None,
+    role: str | None,
+    name: str | None,
+) -> dict:
+    session = _get_session(session_id)
+    page = session['page']
+
+    if selector is not None:
+        page.locator(selector).first.click()
+    elif text is not None:
+        page.get_by_text(text, exact=True).first.click()
+    elif role is not None:
+        if name:
+            page.get_by_role(role, name=name).first.click()
+        else:
+            page.get_by_role(role).first.click()
+    else:
+        raise ValueError("browser_click needs one of: selector, text, or role.")
+
+    return {'url': page.url, 'title': page.title()}
+
+
+def _browser_press_key_impl(session_id: str, key: str) -> dict:
+    session = _get_session(session_id)
+    session['page'].keyboard.press(key)
+    return {'pressed': key}
+
+
+def _browser_wait_for_text_impl(
+    session_id: str,
+    text: str | list[str],
+    timeout_ms: int,
+) -> dict:
+    session = _get_session(session_id)
+    page = session['page']
+    candidates = [text] if isinstance(text, str) else list(text)
+
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        body = page.evaluate('document.body.innerText')
+        for cand in candidates:
+            if cand in body:
+                waited = int((timeout_ms / 1000 - (deadline - time.time())) * 1000)
+                return {'matched': cand, 'waited_ms': waited}
+        time.sleep(0.5)
+    raise TimeoutError(
+        f'none of {candidates!r} appeared in page body within {timeout_ms}ms'
+    )
+
+
+def _browser_screenshot_impl(
+    session_id: str,
+    out_path: str | None,
+    full_page: bool,
+) -> dict:
+    session = _get_session(session_id)
+    if out_path is None:
+        _DEFAULT_SHOT_DIR.mkdir(parents=True, exist_ok=True)
+        ts = int(time.time() * 1000)
+        out_path = str(_DEFAULT_SHOT_DIR / f'{session_id}-{ts}.png')
+
+    session['page'].screenshot(path=out_path, full_page=full_page)
+    size = Path(out_path).stat().st_size
+    return {'path': out_path, 'bytes': size, 'full_page': full_page}
+
+
+def _browser_get_text_impl(session_id: str, selector: str | None) -> dict:
+    session = _get_session(session_id)
+    page = session['page']
+    if selector is None:
+        text = page.evaluate('document.body.innerText')
+    else:
+        text = page.locator(selector).first.inner_text()
+    return {'text': text, 'url': page.url, 'title': page.title()}
+
+
+def _browser_close_impl(session_id: str) -> dict:
+    if session_id not in _browser_sessions:
+        return {'closed': False, 'reason': 'session not found (already closed?)'}
+    _close_session(session_id)
+    return {'closed': True}
+
+
+def _browser_list_sessions_impl() -> dict:
+    return {
+        'sessions': [
+            {
+                'session_id': sid,
+                'url': sess['page'].url,
+                'title': sess['page'].title(),
+            }
+            for sid, sess in _browser_sessions.items()
+        ]
+    }
+
+
 def _close_session(session_id: str) -> None:
     """Tear down a session's browser + Playwright runtime in order. Errors
     are swallowed because we may be running at process exit."""
@@ -360,12 +572,27 @@ def _close_session(session_id: str) -> None:
 
 @atexit.register
 def _close_all_sessions() -> None:
+    # Best-effort. At interpreter shutdown the browser worker thread may
+    # already be torn down and the asyncio loop is gone, so we accept that
+    # some cleanup just doesn't happen — the OS will reap the chromium
+    # subprocess regardless.
     for sid in list(_browser_sessions.keys()):
-        _close_session(sid)
+        try:
+            _close_session(sid)
+        except Exception:
+            pass
+
+
+# --- async @mcp.tool wrappers ---
+# These are what FastMCP registers and what the MCP protocol calls. Each
+# delegates to its sync impl through the dedicated browser worker thread
+# (see _run_in_browser_thread). Keeping the async wrappers thin keeps the
+# Playwright-vs-asyncio rule visible in one place: every line that touches
+# Playwright runs in `_browser_executor`, never in the FastMCP loop.
 
 
 @mcp.tool()
-def browser_open(
+async def browser_open(
     url: Annotated[
         str,
         Field(description='URL to load in a new browser session.'),
@@ -418,35 +645,14 @@ def browser_open(
     only contain the browser tab, never the OS desktop. This is the
     structural reason to use these tools instead of OS screencapture.
     """
-    _ensure_chromium_installed()
-    sync_playwright = _require_playwright()
-    pw_cm = sync_playwright()
-    pw = pw_cm.start()
-    browser = pw.chromium.launch(headless=headless)
-    context = browser.new_context(
-        viewport={'width': viewport_width, 'height': viewport_height}
+    return await _run_in_browser_thread(
+        _browser_open_impl,
+        url, viewport_width, viewport_height, headless, wait_until,
     )
-    page = context.new_page()
-    page.goto(url, wait_until=wait_until)
-
-    session_id = uuid.uuid4().hex[:12]
-    _browser_sessions[session_id] = {
-        'playwright_cm': pw_cm,
-        'playwright': pw,
-        'browser': browser,
-        'context': context,
-        'page': page,
-    }
-    return {
-        'session_id': session_id,
-        'url': page.url,
-        'title': page.title(),
-        'viewport': {'width': viewport_width, 'height': viewport_height},
-    }
 
 
 @mcp.tool()
-def browser_navigate(
+async def browser_navigate(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
     url: Annotated[str, Field(description='URL to navigate to.')],
     wait_until: Annotated[
@@ -456,13 +662,13 @@ def browser_navigate(
 ) -> dict:
     """Navigate the existing session's tab to ``url``. Reuses the same
     viewport and browser context."""
-    session = _get_session(session_id)
-    session['page'].goto(url, wait_until=wait_until)
-    return {'url': session['page'].url, 'title': session['page'].title()}
+    return await _run_in_browser_thread(
+        _browser_navigate_impl, session_id, url, wait_until,
+    )
 
 
 @mcp.tool()
-def browser_type(
+async def browser_type(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
     text: Annotated[str, Field(description='Text to type into the focused or located element.')],
     placeholder: Annotated[
@@ -496,33 +702,13 @@ def browser_type(
     ``role`` is provided, focuses that element first; otherwise types
     into whatever currently has focus. Returns the located element's
     bounding box so the agent can verify it found the right thing."""
-    session = _get_session(session_id)
-    page = session['page']
-
-    target = None
-    if placeholder is not None:
-        target = page.get_by_placeholder(placeholder).first
-    elif selector is not None:
-        target = page.locator(selector).first
-    elif role is not None:
-        target = page.get_by_role(role).first
-
-    if target is not None:
-        target.click()
-        target.type(text, delay=delay_ms)
-        try:
-            box = target.bounding_box()
-        except Exception:
-            box = None
-    else:
-        page.keyboard.type(text, delay=delay_ms)
-        box = None
-
-    return {'typed_chars': len(text), 'target_box': box}
+    return await _run_in_browser_thread(
+        _browser_type_impl, session_id, text, placeholder, selector, role, delay_ms,
+    )
 
 
 @mcp.tool()
-def browser_click(
+async def browser_click(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
     selector: Annotated[
         str | None,
@@ -549,23 +735,13 @@ def browser_click(
     """Click an element. Provide one of selector / text / role+name.
     Returns the page URL and title after the click in case it triggered
     a navigation."""
-    session = _get_session(session_id)
-    page = session['page']
-
-    if selector is not None:
-        page.locator(selector).first.click()
-    elif text is not None:
-        page.get_by_text(text, exact=True).first.click()
-    elif role is not None:
-        page.get_by_role(role, name=name).first.click() if name else page.get_by_role(role).first.click()
-    else:
-        raise ValueError("browser_click needs one of: selector, text, or role.")
-
-    return {'url': page.url, 'title': page.title()}
+    return await _run_in_browser_thread(
+        _browser_click_impl, session_id, selector, text, role, name,
+    )
 
 
 @mcp.tool()
-def browser_press_key(
+async def browser_press_key(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
     key: Annotated[
         str,
@@ -578,13 +754,11 @@ def browser_press_key(
     ],
 ) -> dict:
     """Press a single key (or chord) on the focused element / page."""
-    session = _get_session(session_id)
-    session['page'].keyboard.press(key)
-    return {'pressed': key}
+    return await _run_in_browser_thread(_browser_press_key_impl, session_id, key)
 
 
 @mcp.tool()
-def browser_wait_for_text(
+async def browser_wait_for_text(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
     text: Annotated[
         str | list[str],
@@ -607,24 +781,13 @@ def browser_wait_for_text(
     Returns which substring matched, or raises TimeoutError if none did
     in time. The agent should usually run a screenshot right after this
     returns successfully — that's the whole point of waiting."""
-    session = _get_session(session_id)
-    page = session['page']
-    candidates = [text] if isinstance(text, str) else list(text)
-
-    deadline = time.time() + timeout_ms / 1000
-    while time.time() < deadline:
-        body = page.evaluate('document.body.innerText')
-        for cand in candidates:
-            if cand in body:
-                return {'matched': cand, 'waited_ms': int((timeout_ms / 1000 - (deadline - time.time())) * 1000)}
-        time.sleep(0.5)
-    raise TimeoutError(
-        f'none of {candidates!r} appeared in page body within {timeout_ms}ms'
+    return await _run_in_browser_thread(
+        _browser_wait_for_text_impl, session_id, text, timeout_ms,
     )
 
 
 @mcp.tool()
-def browser_screenshot(
+async def browser_screenshot(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
     out_path: Annotated[
         str | None,
@@ -655,19 +818,13 @@ def browser_screenshot(
     windows, or other tabs. That structural property is why
     OS-screencapture leaks (which historically happened when agents
     fell back to ``screencapture -x``) are impossible here."""
-    session = _get_session(session_id)
-    if out_path is None:
-        _DEFAULT_SHOT_DIR.mkdir(parents=True, exist_ok=True)
-        ts = int(time.time() * 1000)
-        out_path = str(_DEFAULT_SHOT_DIR / f'{session_id}-{ts}.png')
-
-    session['page'].screenshot(path=out_path, full_page=full_page)
-    size = Path(out_path).stat().st_size
-    return {'path': out_path, 'bytes': size, 'full_page': full_page}
+    return await _run_in_browser_thread(
+        _browser_screenshot_impl, session_id, out_path, full_page,
+    )
 
 
 @mcp.tool()
-def browser_get_text(
+async def browser_get_text(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
     selector: Annotated[
         str | None,
@@ -682,41 +839,23 @@ def browser_get_text(
     """Read text from the page. Useful for verifying a wait, extracting
     a URL the agent should navigate to next, or grabbing a generated
     artifact id from the rendered output."""
-    session = _get_session(session_id)
-    page = session['page']
-    if selector is None:
-        text = page.evaluate('document.body.innerText')
-    else:
-        text = page.locator(selector).first.inner_text()
-    return {'text': text, 'url': page.url, 'title': page.title()}
+    return await _run_in_browser_thread(_browser_get_text_impl, session_id, selector)
 
 
 @mcp.tool()
-def browser_close(
+async def browser_close(
     session_id: Annotated[str, Field(description='Session id from browser_open.')],
 ) -> dict:
     """Close the session and free the Chromium process. Always call this
     when done; otherwise the browser leaks until the MCP server exits."""
-    if session_id not in _browser_sessions:
-        return {'closed': False, 'reason': 'session not found (already closed?)'}
-    _close_session(session_id)
-    return {'closed': True}
+    return await _run_in_browser_thread(_browser_close_impl, session_id)
 
 
 @mcp.tool()
-def browser_list_sessions() -> dict:
+async def browser_list_sessions() -> dict:
     """List currently open browser sessions. Mainly for debugging when
     an agent loses track of a session_id mid-flow."""
-    return {
-        'sessions': [
-            {
-                'session_id': sid,
-                'url': sess['page'].url,
-                'title': sess['page'].title(),
-            }
-            for sid, sess in _browser_sessions.items()
-        ]
-    }
+    return await _run_in_browser_thread(_browser_list_sessions_impl)
 
 
 def main() -> None:

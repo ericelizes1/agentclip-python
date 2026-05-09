@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-09
+
+### Fixed
+
+- **`browser_*` MCP tools crashed under the live FastMCP server** with `It looks like you are using Playwright Sync API inside the asyncio loop`. Tools were sync, FastMCP runs handlers under asyncio, Playwright sync refuses to coexist. Every `browser_open` call against the running server failed on its first line. The pytest suite missed it because tests called the tool functions directly, bypassing FastMCP's async wrapper.
+- Each `browser_*` tool is now an async @mcp.tool wrapper that delegates the actual Playwright work to a sync `_*_impl` helper, run inside a dedicated single-thread `ThreadPoolExecutor`. The thread has no event loop, so sync_playwright works there; reusing the same thread across calls is required because Playwright sync objects are thread-bound.
+- New `test_browser_tools_are_async` (structural — every browser_* must be `iscoroutinefunction`) and `test_async_open_screenshot_close_under_event_loop` (drives the wrapper through `asyncio.run`) pin the regression. The existing tests now call `_*_impl` helpers directly so both layers stay covered.
+
 ## [0.6.0] - 2026-05-09
 
 ### Added

@@ -141,23 +141,26 @@ def test_open_screenshot_close_happy_path(tmp_path):
     a session is allocated, a viewport-only PNG lands on disk at the
     requested path, and close releases the session id."""
     with _serve_fixture() as url:
-        opened = mcp_server.browser_open(url=url, headless=True)
+        opened = mcp_server._browser_open_impl(
+            url=url, viewport_width=1440, viewport_height=900,
+            headless=True, wait_until='networkidle',
+        )
         sid = opened['session_id']
         assert opened['title'] == 'browser-test fixture'
         assert opened['viewport'] == {'width': 1440, 'height': 900}
 
         out = tmp_path / 'shot.png'
-        shot = mcp_server.browser_screenshot(sid, out_path=str(out))
+        shot = mcp_server._browser_screenshot_impl(sid, out_path=str(out), full_page=False)
         assert shot['path'] == str(out)
         assert shot['bytes'] > 0
         # PNG magic bytes — pin that we got an actual PNG, not random bytes.
         assert out.read_bytes()[:8] == b'\x89PNG\r\n\x1a\n'
 
-        closed = mcp_server.browser_close(sid)
+        closed = mcp_server._browser_close_impl(sid)
         assert closed == {'closed': True}
 
         with pytest.raises(ValueError):
-            mcp_server.browser_screenshot(sid)
+            mcp_server._browser_screenshot_impl(sid, out_path=None, full_page=False)
 
 
 @needs_browser
@@ -166,25 +169,31 @@ def test_type_click_and_wait_for_text(tmp_path):
     div; we wait for it and confirm get_text returns the new state.
     Exercises type, click, wait_for_text, and get_text together."""
     with _serve_fixture() as url:
-        opened = mcp_server.browser_open(url=url, headless=True)
+        opened = mcp_server._browser_open_impl(
+            url=url, viewport_width=1440, viewport_height=900,
+            headless=True, wait_until='networkidle',
+        )
         sid = opened['session_id']
         try:
-            typed = mcp_server.browser_type(
-                sid, text='hello there', placeholder='Ask the fixture...'
+            typed = mcp_server._browser_type_impl(
+                sid, text='hello there', placeholder='Ask the fixture...',
+                selector=None, role=None, delay_ms=15,
             )
             assert typed['typed_chars'] == len('hello there')
 
-            mcp_server.browser_click(sid, selector='#go')
+            mcp_server._browser_click_impl(
+                sid, selector='#go', text=None, role=None, name=None,
+            )
 
-            matched = mcp_server.browser_wait_for_text(
+            matched = mcp_server._browser_wait_for_text_impl(
                 sid, text='submitted: hello there', timeout_ms=5_000
             )
             assert matched['matched'] == 'submitted: hello there'
 
-            text = mcp_server.browser_get_text(sid, selector='#status')
+            text = mcp_server._browser_get_text_impl(sid, selector='#status')
             assert text['text'] == 'submitted: hello there'
         finally:
-            mcp_server.browser_close(sid)
+            mcp_server._browser_close_impl(sid)
 
 
 @needs_browser
@@ -195,16 +204,19 @@ def test_screenshot_default_path_lands_under_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(mcp_server, '_DEFAULT_SHOT_DIR', tmp_path / 'shots')
 
     with _serve_fixture() as url:
-        opened = mcp_server.browser_open(url=url, headless=True)
+        opened = mcp_server._browser_open_impl(
+            url=url, viewport_width=1440, viewport_height=900,
+            headless=True, wait_until='networkidle',
+        )
         sid = opened['session_id']
         try:
-            shot = mcp_server.browser_screenshot(sid)
+            shot = mcp_server._browser_screenshot_impl(sid, out_path=None, full_page=False)
             path = Path(shot['path'])
             assert path.exists()
             assert path.is_relative_to(tmp_path / 'shots')
             assert path.suffix == '.png'
         finally:
-            mcp_server.browser_close(sid)
+            mcp_server._browser_close_impl(sid)
 
 
 @needs_browser
@@ -212,16 +224,19 @@ def test_wait_for_text_times_out_cleanly(tmp_path):
     """Waiting for text that never appears should raise TimeoutError
     with a useful message — agents act on that text."""
     with _serve_fixture() as url:
-        opened = mcp_server.browser_open(url=url, headless=True)
+        opened = mcp_server._browser_open_impl(
+            url=url, viewport_width=1440, viewport_height=900,
+            headless=True, wait_until='networkidle',
+        )
         sid = opened['session_id']
         try:
             with pytest.raises(TimeoutError) as exc:
-                mcp_server.browser_wait_for_text(
+                mcp_server._browser_wait_for_text_impl(
                     sid, text='this will never appear', timeout_ms=500
                 )
             assert 'this will never appear' in str(exc.value)
         finally:
-            mcp_server.browser_close(sid)
+            mcp_server._browser_close_impl(sid)
 
 
 def test_get_session_unknown_id_raises_clearly():
@@ -230,3 +245,70 @@ def test_get_session_unknown_id_raises_clearly():
     msg = str(exc.value)
     assert 'browser_open' in msg
     assert 'not-a-real-session' in msg
+
+
+# --- async wrapper regression test ---
+# The previous suite called mcp_server.browser_open(...) directly, which
+# bypassed the async wrapper FastMCP actually invokes. That hid a real
+# bug for one whole release: Playwright's sync API refuses to coexist
+# with an asyncio loop ("It looks like you are using Playwright Sync API
+# inside the asyncio loop"), so the tools failed the moment the live
+# MCP server tried to use them. This test pins the fix — every browser
+# tool MUST be an async function, and at least one full open→shot→close
+# cycle MUST work when driven through an event loop.
+
+
+def test_browser_tools_are_async():
+    """Structural check — every browser_* @mcp.tool wrapper must be a
+    coroutine function so FastMCP can await it. If this fails, the bug
+    is back: a sync @mcp.tool will run Playwright on the FastMCP loop's
+    thread and crash with the asyncio error."""
+    import inspect
+
+    for name in (
+        'browser_open',
+        'browser_navigate',
+        'browser_type',
+        'browser_click',
+        'browser_press_key',
+        'browser_wait_for_text',
+        'browser_screenshot',
+        'browser_get_text',
+        'browser_close',
+        'browser_list_sessions',
+    ):
+        fn = getattr(mcp_server, name)
+        # FastMCP wraps the original function; the wrapped callable still
+        # has `__wrapped__` (or the wrapper itself is a coroutine fn).
+        target = getattr(fn, '__wrapped__', fn)
+        assert inspect.iscoroutinefunction(target), (
+            f"{name} must be async — sync browser tools crash under "
+            f"FastMCP because Playwright sync refuses to run inside an "
+            f"asyncio loop. See _run_in_browser_thread in mcp_server.py."
+        )
+
+
+@needs_browser
+def test_async_open_screenshot_close_under_event_loop(tmp_path):
+    """End-to-end through the async wrapper, driven under an asyncio
+    loop — the same shape of call FastMCP makes. Catches the
+    'Sync API inside asyncio loop' regression by actually running it."""
+    import asyncio
+
+    async def run():
+        with _serve_fixture() as url:
+            opened = await mcp_server.browser_open(url=url, headless=True)
+            sid = opened['session_id']
+            assert opened['title'] == 'browser-test fixture'
+
+            out = tmp_path / 'shot-async.png'
+            shot = await mcp_server.browser_screenshot(
+                session_id=sid, out_path=str(out)
+            )
+            assert shot['path'] == str(out)
+            assert out.read_bytes()[:8] == b'\x89PNG\r\n\x1a\n'
+
+            closed = await mcp_server.browser_close(session_id=sid)
+            assert closed == {'closed': True}
+
+    asyncio.run(run())
