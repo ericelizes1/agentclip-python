@@ -16,12 +16,18 @@ today. SSE/HTTP transports can come later if a deployment needs them.
 
 from __future__ import annotations
 
-from typing import Annotated
+import asyncio
+import atexit
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
+from pathlib import Path
+from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from .browser import get_browser_runtime
 from .sdk import AgentClipClient
 from .state import StateStore
 
@@ -70,15 +76,6 @@ def slideshow_create(
             )
         ),
     ] = None,
-    run_type: Annotated[
-        str | None,
-        Field(
-            description=(
-                'Optional run type that sets the narration voice and pacing. '
-                'One of: walkthrough, guide, bug.'
-            )
-        ),
-    ] = None,
 ) -> dict:
     """Start a new slideshow. Returns the id, share URL, and write token.
 
@@ -109,137 +106,6 @@ def slideshow_create(
         'write_token': result.write_token,
     }
 
-
-@mcp.tool()
-def browser_open(
-    url: Annotated[
-        str,
-        Field(description='URL to open in a new headless Chromium session.'),
-    ],
-    viewport_width: Annotated[
-        int,
-        Field(description='Viewport width in CSS pixels. Defaults to 1440.'),
-    ] = 1440,
-    viewport_height: Annotated[
-        int,
-        Field(description='Viewport height in CSS pixels. Defaults to 900.'),
-    ] = 900,
-) -> dict:
-    """Open a headless browser session and return its session id."""
-    return get_browser_runtime().open(
-        url=url,
-        viewport_width=viewport_width,
-        viewport_height=viewport_height,
-    )
-
-
-@mcp.tool()
-def browser_navigate(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-    url: Annotated[str, Field(description='Destination URL.')],
-) -> dict:
-    """Navigate an existing session to a new URL."""
-    return get_browser_runtime().navigate(session_id, url=url)
-
-
-@mcp.tool()
-def browser_click(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-    selector: Annotated[str, Field(description='Playwright selector for the target element.')],
-) -> dict:
-    """Click an element in the current page."""
-    return get_browser_runtime().click(session_id, selector=selector)
-
-
-@mcp.tool()
-def browser_type(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-    selector: Annotated[str, Field(description='Playwright selector for the target input.')],
-    text: Annotated[str, Field(description='Text to type into the element.')],
-    clear_first: Annotated[
-        bool,
-        Field(description='Whether to clear the field before typing. Defaults to true.'),
-    ] = True,
-) -> dict:
-    """Type text into an input on the current page."""
-    return get_browser_runtime().type(
-        session_id,
-        selector=selector,
-        text=text,
-        clear_first=clear_first,
-    )
-
-
-@mcp.tool()
-def browser_press_key(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-    key: Annotated[str, Field(description='Keyboard key name, e.g. Enter or ArrowDown.')],
-) -> dict:
-    """Press a keyboard key in the active page."""
-    return get_browser_runtime().press_key(session_id, key=key)
-
-
-@mcp.tool()
-def browser_wait_for_text(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-    text: Annotated[str, Field(description='Text that must become visible on the page.')],
-    timeout_ms: Annotated[
-        int,
-        Field(description='Maximum time to wait in milliseconds. Defaults to 10000.'),
-    ] = 10000,
-) -> dict:
-    """Wait until the given text appears on the page."""
-    return get_browser_runtime().wait_for_text(session_id, text=text, timeout_ms=timeout_ms)
-
-
-@mcp.tool()
-def browser_get_text(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-    selector: Annotated[
-        str,
-        Field(
-            description='Playwright selector whose inner text should be returned. Defaults to body.'
-        ),
-    ] = 'body',
-    max_chars: Annotated[
-        int,
-        Field(description='Clip the returned text to this many characters. Defaults to 4000.'),
-    ] = 4000,
-) -> dict:
-    """Extract text from the current page."""
-    return get_browser_runtime().get_text(session_id, selector=selector, max_chars=max_chars)
-
-
-@mcp.tool()
-def browser_screenshot(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-) -> dict:
-    """Capture a viewport-only PNG screenshot to disk."""
-    return get_browser_runtime().screenshot(session_id)
-
-
-@mcp.tool()
-def browser_start_recording(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-) -> dict:
-    """Start collecting frames for a short animated recording."""
-    return get_browser_runtime().start_recording(session_id)
-
-
-@mcp.tool()
-def browser_stop_recording(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-) -> dict:
-    """Finalize the current recording and write it to disk."""
-    return get_browser_runtime().stop_recording(session_id)
-
-
-@mcp.tool()
-def browser_close(
-    session_id: Annotated[str, Field(description='Session id returned by browser_open.')],
-) -> dict:
-    """Close the browser session and clean up resources."""
-    return get_browser_runtime().close(session_id)
 
 
 @mcp.tool()
@@ -404,14 +270,6 @@ def _resolve_token(slideshow_id: str) -> str:
 # sync_playwright works there; reusing the SAME thread across calls is
 # critical because Playwright sync objects are thread-bound (a browser
 # created in one thread can't be driven from another).
-
-import asyncio
-import atexit
-import time
-import uuid
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from typing import Any
 
 _BrowserSession = dict[str, Any]
 _browser_sessions: dict[str, _BrowserSession] = {}
@@ -702,14 +560,10 @@ def _close_session(session_id: str) -> None:
     if session is None:
         return
     for key in ('context', 'browser'):
-        try:
+        with suppress(Exception):
             session[key].close()
-        except Exception:
-            pass
-    try:
+    with suppress(Exception):
         session['playwright_cm'].__exit__(None, None, None)
-    except Exception:
-        pass
 
 
 @atexit.register
@@ -719,10 +573,8 @@ def _close_all_sessions() -> None:
     # some cleanup just doesn't happen — the OS will reap the chromium
     # subprocess regardless.
     for sid in list(_browser_sessions.keys()):
-        try:
+        with suppress(Exception):
             _close_session(sid)
-        except Exception:
-            pass
 
 
 # --- async @mcp.tool wrappers ---

@@ -1,6 +1,7 @@
 """agentclip: turn AI agent QA runs into shareable slideshows."""
 
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
 from .sdk import DEFAULT_BASE_URL, AgentClipClient, AgentClipError
 

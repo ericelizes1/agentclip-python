@@ -58,6 +58,19 @@ INSTALL_SKILL_TARGET_OPTION = typer.Option(
     '--target',
     help='Directory to install SKILL.md into. Defaults to ~/.claude/skills/agentclip.',
 )
+INSTALL_MCP_CONFIG_OPTION = typer.Option(
+    None,
+    '--config',
+    help=(
+        "Path to Claude Code's mcp.json. Defaults to ~/.claude/mcp.json. "
+        'Override via AGENTCLIP_MCP_CONFIG.'
+    ),
+)
+UNINSTALL_MCP_CONFIG_OPTION = typer.Option(
+    None,
+    '--config',
+    help='Path to mcp.json. Defaults to ~/.claude/mcp.json.',
+)
 
 # Curation lives in its own namespace because it operates on a different
 # resource (the home gallery) than slideshow CRUD does. Adding gallery
@@ -681,14 +694,7 @@ def install_skill(
 
 @app.command('install-mcp')
 def install_mcp(
-    config: Path = typer.Option(
-        None,
-        '--config',
-        help=(
-            "Path to Claude Code's mcp.json. Defaults to ~/.claude/mcp.json. "
-            'Override via AGENTCLIP_MCP_CONFIG.'
-        ),
-    ),
+    config: Path = INSTALL_MCP_CONFIG_OPTION,
 ) -> None:
     """Register the agentclip MCP server in Claude Code's config.
 
@@ -715,11 +721,7 @@ def install_mcp(
 
 @app.command('uninstall-mcp')
 def uninstall_mcp(
-    config: Path = typer.Option(
-        None,
-        '--config',
-        help='Path to mcp.json. Defaults to ~/.claude/mcp.json.',
-    ),
+    config: Path = UNINSTALL_MCP_CONFIG_OPTION,
 ) -> None:
     """Remove the agentclip MCP server from Claude Code's config.
 

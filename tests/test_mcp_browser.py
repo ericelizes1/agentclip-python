@@ -22,7 +22,6 @@ import pytest
 
 from agentclip import mcp_server
 
-
 # ---------------------------------------------------------------------------
 # Fixtures: tiny static HTTP server with a deterministic page
 # ---------------------------------------------------------------------------
