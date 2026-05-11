@@ -10,9 +10,8 @@ isolated tmp HOME, which means:
   if someone ever rewrites `is_setup_complete` to read+parse the
   marker, this test catches the regression.
 
-Playwright is excluded from the test environment, so the browser
-install branch resolves the "extra missing" path naturally without
-mocks.
+Browser installation is patched in these tests so we exercise the setup
+flow without touching the host machine's Playwright installation.
 """
 
 from __future__ import annotations
@@ -37,6 +36,11 @@ def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     marker = tmp_path / 'agentclip' / '.setup-complete'
     monkeypatch.setenv('AGENTCLIP_SETUP_MARKER', str(marker))
     return marker
+
+
+@pytest.fixture(autouse=True)
+def _stub_browser_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr('agentclip.setup._install_playwright_chromium', lambda quiet: True)
 
 
 def test_first_invocation_runs_setup_and_writes_marker(

@@ -7,7 +7,7 @@ Turn your AI agent's QA runs into shareable clips.
 [![CI](https://github.com/ericelizes1/agentclip-python/actions/workflows/ci.yml/badge.svg)](https://github.com/ericelizes1/agentclip-python/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/pypi/l/agentclip.svg)](https://github.com/ericelizes1/agentclip-python/blob/main/LICENSE)
 
-Your AI agent drives the browser. AgentClip captures the moments that matter, screenshots and captions, and ships you back a single URL anyone can watch.
+Your AI agent drives the browser. AgentClip ships the browser tools, captures the moments that matter, and hands back a single URL anyone can watch.
 
 The product is the artifact (the clip URL) plus the prompt engineering (the bundled skill) that makes generated runs actually good. The backend, MCP plumbing, and CLI are commodity.
 
@@ -23,7 +23,7 @@ Built in May 2026. Early. APIs may shift before a 1.0 tag.
 pip install agentclip
 ```
 
-That's it. The first time `agentclip` runs, lazy first-run setup wires the bundled Claude Code skill, downloads browser drivers if you'll need them, and writes a marker so subsequent invocations are instant.
+That's it. The first time `agentclip` runs, lazy first-run setup wires the bundled skill, installs Chromium for the built-in browser runtime, and writes a marker so subsequent invocations are instant.
 
 Or run with no install:
 
@@ -37,7 +37,7 @@ Ask your agent in plain English (Claude Code, Claude Desktop, or any MCP-aware c
 
 > QA the signup flow on localhost:3000 and post a clip.
 
-The agent calls `slideshow_create`, captures screenshots after each meaningful action, calls `add_slide` with active-voice captions, then `set_summary` at the end. You get back a share URL plus an edit URL for caption fixes later.
+The agent opens the built-in browser, captures screenshots or a short recording after each meaningful action, calls `slideshow_create`, `add_slide`, and `set_summary`, then hands back a share URL plus an edit URL for caption fixes later.
 
 Or use the CLI directly:
 
@@ -66,14 +66,19 @@ Add to your `claude_desktop_config.json` (or equivalent):
 }
 ```
 
-Restart your agent runtime. The four tools below will register automatically.
+Restart your agent runtime. The browser and slideshow tools below will register automatically.
 
 ## Tools
 
 | Tool | Description |
 |---|---|
+| `browser_open` | Launch built-in Chromium in a fixed viewport and return a session id. |
+| `browser_navigate` / `browser_click` / `browser_type` / `browser_press_key` | Drive the page through the flow you want to show. |
+| `browser_screenshot` | Save a viewport-only PNG to disk for `slideshow_add_slide`. |
+| `browser_start_recording` / `browser_stop_recording` | Capture a short animated recording to disk when motion is the story. |
+| `browser_get_text` / `browser_wait_for_text` / `browser_close` | Pull text, wait for loaded states, and clean up sessions. |
 | `slideshow_create` | Start a clip. Returns id, share URL, and a write_token used for subsequent mutations. |
-| `slideshow_add_slide` | Append a screenshot + caption. The local state store auto-supplies the write_token. |
+| `slideshow_add_slide` | Append a screenshot, GIF, or short video plus caption. The local state store auto-supplies the write_token. |
 | `slideshow_update_slide` | Replace the image and/or caption of a slide already in the clip. |
 | `slideshow_set_summary` | Set the clip's TL;DR, near the end of the run. |
 
@@ -88,7 +93,8 @@ Restart your agent runtime. The four tools below will register automatically.
 
 - `src/agentclip/sdk.py`: `AgentClipClient`, sync HTTP client over `httpx`
 - `src/agentclip/cli.py`: `agentclip ...` Typer CLI, thin wrapper over the SDK
-- `src/agentclip/mcp_server.py`: MCP server registering the four tools
+- `src/agentclip/browser.py`: built-in Playwright browser runtime, screenshots, and recordings
+- `src/agentclip/mcp_server.py`: MCP server registering both browser and slideshow tools
 - `src/agentclip/state.py`: atomic-write `~/.agentclip/state.json` for write_tokens
 - `src/agentclip/skill/SKILL.md`: the bundled agent skill
 
@@ -99,7 +105,7 @@ Companion repo: [`ericelizes1/agentclip`](https://github.com/ericelizes1/agentcl
 ## Development
 
 ```bash
-uv sync --all-extras --dev
+uv sync --extra dev
 uv run pytest -q
 uv run ruff check .
 ```

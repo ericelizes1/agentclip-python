@@ -23,12 +23,8 @@ dependencies = [
     'typer>=0.12',
     'mcp>=1.0',
     'pydantic>=2.6',
-    # Playwright is core because the MCP server's browser_* tools are the
-    # canonical capture path. Bundling it removes the "wait you also need
-    # the [browser] extra" friction that bit every dogfooder who followed
-    # the README literally. The Chromium binary itself (~200MB) is
-    # installed lazily on first browser_open — see mcp_server.py.
     'playwright>=1.49',
+    'pillow>=10.0',
 ]
 
 [project.optional-dependencies]

@@ -13,7 +13,6 @@ Thanks for considering a contribution. AgentClip is a small, focused project, so
 ## What's out of scope (for now)
 
 - **Account systems / login flows.** v1 is intentionally accountless; the `write_token` is the credential. We'll revisit when there's a real reason.
-- **Browser-driving runtimes.** AgentClip is the upload layer, not a browser harness. Use Claude Code's own browser tools, Playwright via the Anthropic SDK, or the equivalent in your runtime.
 - **New storage backends.** Object storage is a Django-side concern.
 
 ## Dev setup

@@ -7,9 +7,9 @@ The first time `agentclip` runs (any subcommand), we:
    call so the perf cost on subsequent invocations is negligible.
 
 2. If the marker is missing, run setup once: install the bundled Claude Code
-   skill into ~/.claude/skills/agentclip/, install Playwright Chromium if the
-   `[browser]` extra is present, and (when stdin is a TTY) prompt for a
-   creator credit. Then write the marker so this never runs again.
+   skill into ~/.claude/skills/agentclip/, register the MCP server, install
+   Playwright Chromium, and (when stdin is a TTY) prompt for a creator credit.
+   Then write the marker so this never runs again.
 
 The model is borrowed from Vite / Astro / Bun's first-run patterns —
 `pip install agentclip` is the only step the user thinks about; setup
@@ -25,6 +25,8 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
+import sys
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -108,12 +110,7 @@ _MCP_SERVER_COMMAND = 'agentclip-mcp'
 
 
 def default_mcp_config_path() -> Path:
-    """Resolve the Claude Code MCP config path, honoring an env override.
-
-    Override via AGENTCLIP_MCP_CONFIG so tests don't write to the user's
-    real config and so power users with non-default Claude Code installs
-    can point us at the right file.
-    """
+    """Resolve the Claude Code MCP config path, honoring an env override."""
     override = os.environ.get('AGENTCLIP_MCP_CONFIG')
     if override:
         return Path(override).expanduser()
@@ -121,11 +118,7 @@ def default_mcp_config_path() -> Path:
 
 
 def _read_mcp_config(path: Path) -> dict:
-    """Load the MCP config JSON, returning {} for missing or empty files.
-
-    Raises ValueError with a useful message on malformed JSON — the user
-    needs to know we won't blindly overwrite a config we can't parse.
-    """
+    """Load the MCP config JSON, returning {} for missing or empty files."""
     if not path.exists() or path.stat().st_size == 0:
         return {}
     try:
@@ -138,21 +131,46 @@ def _read_mcp_config(path: Path) -> dict:
         ) from exc
 
 
+def _install_playwright_chromium(quiet: bool) -> bool:
+    """Run `playwright install chromium` for the built-in browser runtime."""
+    if not quiet:
+        print('  installing playwright chromium...')
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'playwright', 'install', 'chromium'],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        if not quiet:
+            print(
+                f'  playwright install failed: {exc}. '
+                'Run `agentclip setup --force` or `python -m playwright install chromium` '
+                'if you need the built-in browser.'
+            )
+        return False
+
+    if result.returncode != 0:
+        if not quiet:
+            stderr_tail = (result.stderr or '').splitlines()[-3:]
+            print(f'  playwright install exited {result.returncode}.')
+            for line in stderr_tail:
+                print(f'    {line}')
+        return False
+
+    if not quiet:
+        print('  playwright chromium ready.')
+    return True
+
+
 def install_mcp_registration(
     *,
     config_path: Path | None = None,
     quiet: bool = False,
 ) -> tuple[Path, str]:
-    """Add (or update) the agentclip entry in Claude Code's mcp.json.
-
-    Idempotent: re-running with the same end state is a no-op (the file
-    still gets rewritten so its mtime is current, but the bytes are
-    unchanged). Preserves any other MCP servers the user has registered.
-
-    Returns ``(path, status)`` where status is one of: ``added``,
-    ``updated``, ``unchanged``. The CLI uses status to print the right
-    message — first install vs. upgrade vs. nothing-to-do.
-    """
+    """Add (or update) the agentclip entry in Claude Code's mcp.json."""
     target = config_path or default_mcp_config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -188,14 +206,7 @@ def uninstall_mcp_registration(
     config_path: Path | None = None,
     quiet: bool = False,
 ) -> tuple[Path, str]:
-    """Remove the agentclip entry from Claude Code's mcp.json.
-
-    Other registered servers are preserved. If the file doesn't exist or
-    didn't have an agentclip entry, this is a no-op.
-
-    Returns ``(path, status)`` where status is ``removed`` or
-    ``not_present``.
-    """
+    """Remove the agentclip entry from Claude Code's mcp.json."""
     target = config_path or default_mcp_config_path()
     if not target.exists():
         if not quiet:
@@ -223,12 +234,7 @@ def run_setup(
     marker_path: Path | None = None,
     skill_dir: Path | None = None,
 ) -> bool:
-    """Run the full first-run setup. Idempotent.
-
-    Returns True when setup ran (regardless of partial step failures);
-    False when it short-circuited because the marker already exists and
-    `force` is False.
-    """
+    """Run the full first-run setup. Idempotent."""
     target = marker_path or default_marker_path()
     if not force and target.exists():
         if not quiet:
@@ -242,10 +248,9 @@ def run_setup(
     try:
         install_mcp_registration(quiet=quiet)
     except ValueError as exc:
-        # User has a malformed mcp.json. Don't block the rest of setup;
-        # surface the error and let them re-run install-mcp once they fix it.
         if not quiet:
             print(f'  mcp registration skipped: {exc}')
+    _install_playwright_chromium(quiet=quiet)
     write_marker(marker_path=target)
 
     if not quiet:
@@ -254,12 +259,7 @@ def run_setup(
 
 
 def ensure_setup(marker_path: Path | None = None) -> None:
-    """Cheap fast-path used by the lazy callback.
-
-    Hot path is `is_setup_complete()` (one stat() call). Cold path runs
-    `run_setup(quiet=False)` so the user sees what happened on their first
-    invocation.
-    """
+    """Cheap fast-path used by the lazy callback."""
     if is_setup_complete(marker_path=marker_path):
         return
     run_setup(marker_path=marker_path)

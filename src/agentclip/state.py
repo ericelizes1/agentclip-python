@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -80,12 +81,8 @@ class StateStore:
             tmp_path = tmp.name
         os.replace(tmp_path, self.path)
         # Tighten perms; write_tokens are credentials.
-        try:
+        with suppress(OSError):
             os.chmod(self.path, 0o600)
-        except OSError:
-            # Filesystems that ignore chmod (e.g. some FAT mounts) are
-            # fine; nothing we can do, and the user opted into that path.
-            pass
 
     def remember(
         self,

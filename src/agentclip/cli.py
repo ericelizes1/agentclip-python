@@ -38,6 +38,26 @@ app = typer.Typer(
 )
 slideshow_app = typer.Typer(help='Create and manage slideshows.', no_args_is_help=True)
 app.add_typer(slideshow_app, name='slideshow')
+DEFAULT_SKILL_TARGET = Path.home() / '.claude' / 'skills' / 'agentclip'
+SLIDESHOW_MEDIA_ARGUMENT = typer.Argument(
+    ...,
+    exists=True,
+    dir_okay=False,
+    help='Path to image or video clip (PNG, JPEG, GIF, WebP, MP4, WebM, MOV).',
+)
+SLIDESHOW_UPDATE_MEDIA_OPTION = typer.Option(
+    None,
+    '--media',
+    '-m',
+    exists=True,
+    dir_okay=False,
+    help='New media file (image or video).',
+)
+INSTALL_SKILL_TARGET_OPTION = typer.Option(
+    DEFAULT_SKILL_TARGET,
+    '--target',
+    help='Directory to install SKILL.md into. Defaults to ~/.claude/skills/agentclip.',
+)
 
 # Curation lives in its own namespace because it operates on a different
 # resource (the home gallery) than slideshow CRUD does. Adding gallery
@@ -202,12 +222,7 @@ def slideshow_create(
 @slideshow_app.command('add')
 def slideshow_add(
     slideshow_id: str = typer.Argument(..., help='ID returned by `agentclip slideshow create`.'),
-    media: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        help='Path to image or video clip (PNG, JPEG, GIF, WebP, MP4, WebM, MOV).',
-    ),
+    media: Path = SLIDESHOW_MEDIA_ARGUMENT,
     caption: str = typer.Option(..., '--caption', '-c', help='Caption for this slide.'),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
@@ -235,14 +250,7 @@ def slideshow_add(
 def slideshow_update(
     slideshow_id: str = typer.Argument(...),
     position: int = typer.Argument(..., help='1-based slide position to replace.'),
-    media: Path | None = typer.Option(
-        None,
-        '--media',
-        '-m',
-        exists=True,
-        dir_okay=False,
-        help='New media file (image or video).',
-    ),
+    media: Path | None = SLIDESHOW_UPDATE_MEDIA_OPTION,
     caption: str | None = typer.Option(None, '--caption', '-c', help='New caption.'),
     as_json: bool = typer.Option(False, '--json'),
 ) -> None:
@@ -306,7 +314,10 @@ def slideshow_narrate(
         None,
         '--voice',
         '-v',
-        help='Override the voice (alloy, echo, fable, onyx, nova, shimmer). Defaults to the run_type voice.',
+        help=(
+            'Override the voice (alloy, echo, fable, onyx, nova, shimmer). '
+            'Defaults to the run_type voice.'
+        ),
     ),
     force: bool = typer.Option(
         False,
@@ -623,11 +634,7 @@ def slideshow_list(
 
 @app.command('install-skill')
 def install_skill(
-    target: Path = typer.Option(
-        Path.home() / '.claude' / 'skills' / 'agentclip',
-        '--target',
-        help='Directory to install SKILL.md into. Defaults to ~/.claude/skills/agentclip.',
-    ),
+    target: Path = INSTALL_SKILL_TARGET_OPTION,
     force: bool = typer.Option(
         False, '--force', help='Overwrite an existing SKILL.md without prompting.'
     ),
@@ -814,7 +821,7 @@ def setup(
     Lazy first-run does this automatically the first time you invoke
     any other subcommand, so most users will never call this directly.
     Re-run with --force after upgrading the package to refresh the
-    bundled skill or after changing browser extras.
+    bundled skill or repair the built-in browser runtime.
     """
     ran = run_setup(force=force, quiet=quiet)
     if not ran and not quiet:

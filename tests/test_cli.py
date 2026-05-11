@@ -27,6 +27,11 @@ def isolated_state(tmp_path, monkeypatch):
     return StateStore(path=path)
 
 
+@pytest.fixture(autouse=True)
+def _skip_lazy_setup(monkeypatch):
+    monkeypatch.setattr('agentclip.cli.ensure_setup', lambda: None)
+
+
 def test_create_summary_includes_artifact_urls_when_present(isolated_state, monkeypatch):
     """When the API returns clip_mp4_url / pdf / embed in the create
     response, the CLI summary echoes them so the agent / user can
