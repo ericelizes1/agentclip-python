@@ -7,7 +7,7 @@ diverges between an agent calling slideshow_create and a developer
 running ``agentclip slideshow create``.
 
 Two non-tool commands round it out:
-- ``agentclip install-skill`` writes SKILL.md to ``~/.claude/skills/agentclip/``.
+- ``agentclip install-skill`` writes SKILL.md to the supported host skill dirs.
 - ``agentclip slideshow list`` shows what's cached locally (tokens stay hidden).
 
 Output goes to stdout as JSON when --json is passed, otherwise as a
@@ -18,16 +18,14 @@ use --json explicitly; humans get the friendly path by default.
 from __future__ import annotations
 
 import json
-import shutil
 import sys
-from importlib import resources
 from pathlib import Path
 
 import typer
 
 from . import __version__
 from .sdk import AgentClipClient, AgentClipError
-from .setup import ensure_setup, run_setup
+from .setup import SUPPORTED_HOSTS, ensure_setup, run_setup
 from .state import StateStore
 
 app = typer.Typer(
@@ -38,7 +36,6 @@ app = typer.Typer(
 )
 slideshow_app = typer.Typer(help='Create and manage slideshows.', no_args_is_help=True)
 app.add_typer(slideshow_app, name='slideshow')
-DEFAULT_SKILL_TARGET = Path.home() / '.claude' / 'skills' / 'agentclip'
 SLIDESHOW_MEDIA_ARGUMENT = typer.Argument(
     ...,
     exists=True,
@@ -54,22 +51,28 @@ SLIDESHOW_UPDATE_MEDIA_OPTION = typer.Option(
     help='New media file (image or video).',
 )
 INSTALL_SKILL_TARGET_OPTION = typer.Option(
-    DEFAULT_SKILL_TARGET,
+    None,
     '--target',
-    help='Directory to install SKILL.md into. Defaults to ~/.claude/skills/agentclip.',
+    help='Directory to install SKILL.md into. Only valid with a single --host.',
 )
 INSTALL_MCP_CONFIG_OPTION = typer.Option(
     None,
     '--config',
     help=(
-        "Path to Claude Code's mcp.json. Defaults to ~/.claude/mcp.json. "
-        'Override via AGENTCLIP_MCP_CONFIG.'
+        'Path to the MCP config file. Only valid with a single --host. '
+        'Claude also honors AGENTCLIP_MCP_CONFIG for backwards compatibility.'
     ),
 )
 UNINSTALL_MCP_CONFIG_OPTION = typer.Option(
     None,
     '--config',
     help='Path to mcp.json. Defaults to ~/.claude/mcp.json.',
+)
+HOSTS_OPTION = typer.Option(
+    None,
+    '--host',
+    '-H',
+    help='Target host runtime(s): claude, codex, opencode. Repeat to target multiple hosts.',
 )
 
 # Curation lives in its own namespace because it operates on a different
@@ -99,6 +102,25 @@ app.add_typer(auth_app, name='auth')
 _SKIP_LAZY_SETUP = frozenset(
     {'version', 'setup', 'install-skill', 'install-mcp', 'uninstall-mcp'}
 )
+
+
+def _normalize_hosts(hosts: list[str] | None) -> tuple[str, ...]:
+    if not hosts:
+        return SUPPORTED_HOSTS
+
+    normalized: list[str] = []
+    for host in hosts:
+        value = host.strip().lower()
+        if value not in SUPPORTED_HOSTS:
+            supported = ', '.join(SUPPORTED_HOSTS)
+            raise _bail(f'unsupported host {host!r}. Expected one of: {supported}')
+        if value not in normalized:
+            normalized.append(value)
+    return tuple(normalized)
+
+
+def _single_host_override_error(flag: str) -> typer.Exit:
+    return _bail(f'{flag} only works when exactly one --host is selected')
 
 
 @app.callback()
@@ -647,7 +669,8 @@ def slideshow_list(
 
 @app.command('install-skill')
 def install_skill(
-    target: Path = INSTALL_SKILL_TARGET_OPTION,
+    target: Path | None = INSTALL_SKILL_TARGET_OPTION,
+    hosts: list[str] | None = HOSTS_OPTION,
     force: bool = typer.Option(
         False, '--force', help='Overwrite an existing SKILL.md without prompting.'
     ),
@@ -658,18 +681,30 @@ def install_skill(
     the agent when to screenshot, how to caption, and how to write the
     summary. Reinstall after upgrading the package to pull in updates.
     """
-    skill_source = resources.files('agentclip.skill').joinpath('SKILL.md')
-    if not skill_source.is_file():
-        raise _bail('SKILL.md not bundled with this install. Open a github issue.')
+    from .setup import default_skill_dir, install_skills
 
-    target.mkdir(parents=True, exist_ok=True)
-    dest = target / 'SKILL.md'
-    if dest.exists() and not force:
-        raise _bail(f'{dest} already exists. Pass --force to overwrite.')
+    selected_hosts = _normalize_hosts(hosts)
+    if target is not None and len(selected_hosts) != 1:
+        raise _single_host_override_error('--target')
 
-    with resources.as_file(skill_source) as src_path:
-        shutil.copyfile(src_path, dest)
-    typer.echo(f'installed skill to {dest}')
+    if force and target is None:
+        for host in selected_hosts:
+            dest = default_skill_dir(host) / 'SKILL.md'
+            if dest.exists():
+                dest.unlink()
+
+    if target is not None and force:
+        dest = target / 'SKILL.md'
+        if dest.exists():
+            dest.unlink()
+
+    installed = install_skills(
+        hosts=selected_hosts,
+        quiet=True,
+        skill_dir=target,
+    )
+    for dest in installed:
+        typer.echo(f'installed skill to {dest}')
 
     # Interactive whoami prompt: only fire when stdin is a TTY (so CI
     # and scripted use don't wedge on input). Skipped silently when
@@ -694,50 +729,76 @@ def install_skill(
 
 @app.command('install-mcp')
 def install_mcp(
-    config: Path = INSTALL_MCP_CONFIG_OPTION,
+    config: Path | None = INSTALL_MCP_CONFIG_OPTION,
+    hosts: list[str] | None = HOSTS_OPTION,
 ) -> None:
-    """Register the agentclip MCP server in Claude Code's config.
+    """Register the agentclip MCP server in supported host configs.
 
     Idempotent and safe — reads any existing mcp.json, adds (or updates)
     just the agentclip entry, and preserves every other server you have
-    registered. Restart Claude Code after running this for the new tools
-    to load.
+    registered. Restart the target host after running this for the new
+    tools to load.
 
     First-run setup runs this automatically, so most users never call it
     directly. Manual invocation is for re-running after you reset your
     config or moved the file.
     """
-    from .setup import install_mcp_registration
+    from .setup import install_host_mcp_registrations
+
+    selected_hosts = _normalize_hosts(hosts)
+    if config is not None and len(selected_hosts) != 1:
+        raise _single_host_override_error('--config')
 
     try:
-        path, status = install_mcp_registration(config_path=config, quiet=True)
+        results = install_host_mcp_registrations(
+            config_path=config,
+            quiet=True,
+            hosts=selected_hosts,
+        )
     except ValueError as exc:
         raise _bail(str(exc)) from exc
 
-    typer.echo(f'mcp registration {status}: {path}')
-    if status in {'added', 'updated'}:
-        typer.echo('  restart Claude Code to load the new tools.')
+    changed_hosts: set[str] = set()
+    for host, path, status in results:
+        typer.echo(f'{host}: mcp registration {status}: {path}')
+        if status in {'added', 'updated'}:
+            changed_hosts.add(host)
+    if changed_hosts:
+        typer.echo(f'  restart {", ".join(sorted(changed_hosts))} to load the new tools.')
 
 
 @app.command('uninstall-mcp')
 def uninstall_mcp(
-    config: Path = UNINSTALL_MCP_CONFIG_OPTION,
+    config: Path | None = UNINSTALL_MCP_CONFIG_OPTION,
+    hosts: list[str] | None = HOSTS_OPTION,
 ) -> None:
-    """Remove the agentclip MCP server from Claude Code's config.
+    """Remove the agentclip MCP server from supported host configs.
 
     Other registered servers are preserved. No-op if the file or entry
     isn't present. Safe to run on a config that's never seen agentclip.
     """
-    from .setup import uninstall_mcp_registration
+    from .setup import uninstall_host_mcp_registrations
+
+    selected_hosts = _normalize_hosts(hosts)
+    if config is not None and len(selected_hosts) != 1:
+        raise _single_host_override_error('--config')
 
     try:
-        path, status = uninstall_mcp_registration(config_path=config, quiet=True)
+        results = uninstall_host_mcp_registrations(
+            config_path=config,
+            quiet=True,
+            hosts=selected_hosts,
+        )
     except ValueError as exc:
         raise _bail(str(exc)) from exc
 
-    typer.echo(f'mcp registration {status}: {path}')
-    if status == 'removed':
-        typer.echo('  restart Claude Code to drop the tools from the running session.')
+    removed_hosts: set[str] = set()
+    for host, path, status in results:
+        typer.echo(f'{host}: mcp registration {status}: {path}')
+        if status == 'removed':
+            removed_hosts.add(host)
+    if removed_hosts:
+        typer.echo(f'  restart {", ".join(sorted(removed_hosts))} to drop the tools.')
 
 
 # ---------- whoami ----------
@@ -817,6 +878,7 @@ def setup(
         '-q',
         help='Suppress per-step status output.',
     ),
+    hosts: list[str] | None = HOSTS_OPTION,
 ) -> None:
     """Run first-run setup explicitly.
 
@@ -825,7 +887,7 @@ def setup(
     Re-run with --force after upgrading the package to refresh the
     bundled skill or repair the built-in browser runtime.
     """
-    ran = run_setup(force=force, quiet=quiet)
+    ran = run_setup(force=force, quiet=quiet, hosts=_normalize_hosts(hosts))
     if not ran and not quiet:
         typer.echo('  (pass --force to re-run anyway.)')
 

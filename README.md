@@ -33,7 +33,7 @@ uvx agentclip --help
 
 ## 60-second example
 
-Ask your agent in plain English (Claude Code, Claude Desktop, or any MCP-aware client):
+Ask your agent in plain English (Claude Code, Codex, OpenCode, or any MCP-aware client):
 
 > QA the signup flow on localhost:3000 and post a clip.
 
@@ -51,22 +51,52 @@ agentclip slideshow list
 agentclip slideshow delete <slideshow_id>
 ```
 
-## MCP install (Claude Desktop, Claude Code, Cursor)
+## Agent runtime install
 
-Add to your `claude_desktop_config.json` (or equivalent):
+`agentclip setup` now installs the bundled skill and MCP registration for:
+
+- `Claude` (`~/.claude/skills/agentclip/`, `~/.claude/mcp.json`)
+- `Codex` (`~/.codex/skills/agentclip/`, `~/.codex/config.json` + `~/.codex/config.toml`)
+- `OpenCode` (`~/.config/opencode/skills/agentclip/`, `~/.config/opencode/opencode.json`)
+
+If you want to re-run just one host:
+
+```bash
+agentclip setup --host codex
+agentclip install-skill --host opencode
+agentclip install-mcp --host claude
+```
+
+Manual MCP shape, if you need it:
+
+- `Claude` / `Codex` JSON-style config:
 
 ```json
 {
   "mcpServers": {
     "agentclip": {
-      "command": "uvx",
-      "args": ["agentclip-mcp"]
+      "command": "agentclip-mcp"
     }
   }
 }
 ```
 
-Restart your agent runtime. The browser and slideshow tools below will register automatically.
+- `OpenCode` `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "agentclip": {
+      "type": "local",
+      "enabled": true,
+      "command": ["agentclip-mcp"]
+    }
+  }
+}
+```
+
+Restart your agent runtime after install so the new tools and skill load.
 
 ## Tools
 

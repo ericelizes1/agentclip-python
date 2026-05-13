@@ -1,6 +1,6 @@
 ---
 name: agentclip
-description: Capture a narrated clip of your work. Use after driving a browser through a feature, bug repro, or onboarding flow the user wants to see at a glance. Triggers on "QA this", "show me what happened", "share a run of X", "demo this", "repro the bug visually", or whenever your work produces visual evidence worth keeping. Output is a shareable URL that plays as a narrated video and falls back to a slide-by-slide scroll.
+description: Create narrated, shareable AgentClip videos from browser-driven QA, demos, bug repros, and investigations. Use when the user asks to record or share visual evidence.
 ---
 
 # agentclip
@@ -49,24 +49,19 @@ A clip is a story, not a flipbook. Before clicking, answer two questions:
 
 | Trigger phrasing in the user prompt | `run_type` | Voice |
 |---|---|---|
-| "QA", "smoke test", "smoke" | `smoke_test` | nova |
-| "repro", "reproduce", "bug" | `bug_repro` | onyx |
-| "demo", "walkthrough", "show off", "showcase" | `demo` | shimmer |
-| "onboarding", "first impression", "friction", "fresh user" | `onboarding_eval` | nova |
-| "compare", "teardown", "vs", "competitive" | `competitive_teardown` | echo |
-| Plain "make a clip", "show me what happened", anything else | `generic` | nova |
+| "QA", "smoke test", "smoke", "walkthrough", "demo", "show off", "showcase", "onboarding", "first impression", "fresh user" | `walkthrough` | default walkthrough voice |
+| "guide", "how-to", "explain", "compare", "teardown", "vs", "investigate", "inspect", "research" | `guide` | default guide voice |
+| "repro", "reproduce", "bug", "broken", "failing flow" | `bug` | default bug voice |
 
-If the trigger is too ambiguous to pick (e.g. user just says "clip this") — ask once, naturally: *"Quick check: is this a bug repro, a smoke test, a demo, or something else? It changes the narration voice."* Don't pause for confirmation on every step; ask once and move.
+If the trigger is too ambiguous to pick (e.g. user just says "clip this") — default to `walkthrough`. Ask only when the difference changes the actual story, not just the label.
 
 The same voice runs the whole clip — intro, every slide caption, and outro all share one voice so the listener hears one consistent presenter.
 
 | Run type | Spine |
 |---|---|
-| Bug repro | The bug — establish, reproduce, prove |
-| Smoke test | "Did it work, and if not, where" — walk the flow, stop at the first failure |
-| Competitive teardown | The comparison — alternate or annotate the contrast |
-| Onboarding evaluation | The friction points — first-impression states + drop-off moments |
-| Demo for a recruiter | The polished moments — title screens, hero states, the result |
+| `bug` | The bug — establish, reproduce, prove |
+| `walkthrough` | "Did it work, and what changed" — walk the flow, capture the meaningful states |
+| `guide` | The useful explanation — inspect, compare, or teach the thing someone came to understand |
 
 If you can't name the spine, ask the user before clicking. A clip without a spine is filler.
 
@@ -81,11 +76,9 @@ Call `slideshow_create` **before** you take screenshots. Two reasons:
 
 **Description = the spoken intro.** It's read aloud over the title card at the start of the rendered video, so write it as the first thing a presenter would actually say. Run-type-specific:
 
-- **bug_repro** — *"Repro of the rate-limit 503 on signup. Three steps."*
-- **smoke_test** — *"Quick smoke of the staging deploy."*
-- **demo** — *"A 30-second look at the new signup flow. Three fields, inline validation, success state. Watch what happens on errors."* — direct, present-tense, no welcome.
-- **onboarding_eval** — *"First-impression read of agentclip.dev as a brand-new user."*
-- **competitive_teardown** — *"Linear vs Notion on project switching. The keyboard-vs-mouse difference."*
+- **bug** — *"Repro of the rate-limit 503 on signup. Three steps."*
+- **walkthrough** — *"A 30-second look at the new signup flow. Three fields, inline validation, success state. Watch what happens on errors."* — direct, present-tense, no welcome.
+- **guide** — *"A quick read on what changed in the AI chatbot market, using the latest public market-share chart."*
 
 Banned openers: *"Welcome to..."*, *"Today we'll be looking at..."*, *"I'm excited to show you..."*, *"In this walkthrough..."*. The MP4 starts where the action is, not in the green room.
 
@@ -126,7 +119,7 @@ A bug repro and a recruiter demo are not the same artifact. **The caption style 
 
 ### Per-run-type caption style
 
-#### `bug_repro` — terse, factual, stack-trace-adjacent
+#### `bug` — terse, factual, stack-trace-adjacent
 
 Voice: a senior engineer narrating a repro to another senior engineer. No setup. No closure. Just facts.
 
@@ -136,7 +129,7 @@ Submitted with valid data. Got 503 from /api/auth/signup.
 Stack trace pointed at a missing rate-limit Redis key.
 ```
 
-#### `smoke_test` — brisk pass/fail progression
+#### `walkthrough` for QA — brisk pass/fail progression
 
 Voice: someone running through a checklist out loud. Each slide ends with the verdict ("worked", "passed", "broken").
 
@@ -146,7 +139,7 @@ Login worked with seeded credentials. Dashboard rendered.
 Logout cleared the session. Cookie gone.
 ```
 
-#### `demo` — presenter, present-tense, no preamble
+#### `walkthrough` for demos — presenter, present-tense, no preamble
 
 Voice: someone showing the product to a friend who already knows roughly what it does. Skip introductions. Land each slide on the *interesting* detail, not the obvious one.
 
@@ -164,7 +157,7 @@ The user clicks the Sign Up button. The form is then submitted to the server. Af
 
 That's a court reporter, not a presenter. Cut every word that doesn't earn its place.
 
-#### `onboarding_eval` — observational, first-impression
+#### `walkthrough` for onboarding — observational, first-impression
 
 Voice: a new user thinking out loud. Notice what catches the eye and what doesn't. Mention what's *missing* as much as what's there.
 
@@ -174,7 +167,7 @@ Pricing's visible on the home, no separate page. Free forever, two paid tiers.
 Sign-up's one click from anywhere — including from inside the marketing copy.
 ```
 
-#### `competitive_teardown` — analytical, comparative
+#### `guide` — analytical, explanatory, comparative
 
 Voice: an analyst comparing two products side by side. Name the difference; explain why it matters. Specifics win.
 
@@ -184,15 +177,15 @@ At 5+ projects Linear's lookup is faster — palette-fuzzy-search beats scroll.
 The cost: Linear's discoverability is worse. Notion's dropdown is impossible to miss.
 ```
 
-#### `generic` — defaults to demo style
+#### Default — use walkthrough style
 
-When you didn't pick a type or none fit cleanly, write demo-style captions. They read well in the most contexts.
+When you didn't pick a type or none fit cleanly, use `walkthrough` and write demo-style captions. They read well in the most contexts.
 
 ### Universal narration tips (apply to every type)
 
 - **Write for the ear, not the eye.** Captions are read aloud by TTS. Re-read each one in your head; if you stumble, rewrite.
 - **Em-dashes give the TTS a natural pause beat.** Use them where a presenter would breathe.
-- **Active voice, present-tense for demos and onboarding evals.** Past-tense ("clicked", "got") is fine for bug repros and smoke tests where you're recapping.
+- **Active voice, present-tense for walkthroughs and guides.** Past-tense ("clicked", "got") is fine for bug repros where you're recapping.
 - **No jargon the listener can't catch on first pass.** Readers can re-skim; listeners can't.
 - **When a slide captures an error or surprise, say so plainly.** *"Got a 500 from /api/teams — stack trace mentioned a missing tenant_id."* Buried bugs are useless bugs.
 
@@ -208,17 +201,15 @@ If a slide should not exist at all, leave it for now and call it out in the summ
 
 `slideshow_set_summary` is the TL;DR. **Under 80 words.** It's read aloud as the spoken outro on the rendered video AND shown as a callout box on the share page. Run-type-specific again:
 
-- **bug_repro** — outcome + slide reference. *"Bug confirmed at slide 2. /api/auth/signup returns 503 instead of either succeeding or rate-limit-error."*
-- **smoke_test** — pass/fail counts + flagged failures. *"Three flows tested. Signup and login passed. Password reset failed at slide 4 — email never arrived."*
-- **demo** — one-sentence wrap that lands the value, not a recap. *"Three fields, two error states, one success path. Clean."* Not *"In conclusion, we have demonstrated..."* — the listener was just there, don't recap.
-- **onboarding_eval** — verdict on the experience. *"Clear hero, transparent pricing, signup never further than one click. Strong onboarding."*
-- **competitive_teardown** — the takeaway, named. *"Linear's keyboard palette wins at scale. Notion's sidebar wins for new users. Pick by user count."*
+- **bug** — outcome + slide reference. *"Bug confirmed at slide 2. /api/auth/signup returns 503 instead of either succeeding or rate-limit-error."*
+- **walkthrough** — pass/fail counts, demo outcome, or the key observed result. *"Three fields, two error states, one success path. Clean."* Not *"In conclusion, we have demonstrated..."* — the listener was just there, don't recap.
+- **guide** — the takeaway, named. *"Gemini gained share while ChatGPT stayed dominant. The market is no longer a one-model story."*
 
 Structure (regardless of type):
 
 1. **One sentence on outcome** — what happened, did it work / what's the verdict.
 2. **Counts or specifics** — pass/fail counts, named differences, or the actual change you noticed.
-3. **Bug list (only for bug_repro / smoke_test)** — one line per real bug, with the slide number.
+3. **Bug list (only for `bug` or QA walkthroughs)** — one line per real bug, with the slide number.
 
 No praise, no hedging, no apologies. No "as we have seen". The summary is read by someone with 10 seconds. Make those seconds count.
 
@@ -269,7 +260,7 @@ User: *"QA the new project-create flow on staging."*
 slideshow_create(
     title="Project-create flow QA on staging",
     description="A walkthrough of the new project-create flow as a brand-new user — looking for friction, broken validation, and surprises.",
-    run_type="smoke_test",  # picked from "QA" in the trigger phrase
+    run_type="walkthrough",  # picked from "QA" in the trigger phrase
 )
 # returns slideshow_id="ss_abc123"
 
@@ -307,13 +298,13 @@ slideshow_set_summary(
 
 ### Same flow, but recorded as a demo for a recruiter
 
-Same screenshots, totally different copy — the run_type changes the voice (shimmer instead of nova) and the captions read like a presenter, not a QA log.
+Same screenshots, totally different copy — the captions read like a presenter, not a QA log.
 
 ```python
 slideshow_create(
     title="Project-create flow on AgentClip",
     description="A 30-second look at how creating a project feels. Three fields, inline validation, a clean redirect on success.",
-    run_type="demo",  # presenter voice, present-tense captions
+    run_type="walkthrough",  # presenter voice, present-tense captions
 )
 
 slideshow_add_slide(

@@ -12,7 +12,13 @@ import pytest
 from typer.testing import CliRunner
 
 from agentclip.cli import app
-from agentclip.setup import install_mcp_registration, uninstall_mcp_registration
+from agentclip.setup import (
+    _install_codex_toml_registration,
+    _install_opencode_mcp_registration,
+    install_host_mcp_registrations,
+    install_mcp_registration,
+    uninstall_mcp_registration,
+)
 
 runner = CliRunner()
 
@@ -166,11 +172,11 @@ def test_cli_install_mcp(tmp_path, monkeypatch):
     target = tmp_path / 'mcp.json'
     monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(target))
 
-    result = runner.invoke(app, ['install-mcp'])
+    result = runner.invoke(app, ['install-mcp', '--host', 'claude'])
 
     assert result.exit_code == 0, result.output
     assert 'added' in result.output
-    assert 'restart Claude Code' in result.output
+    assert 'restart claude' in result.output
     config = _read(target)
     assert config['mcpServers']['agentclip']['command'] == 'agentclip-mcp'
 
@@ -179,20 +185,20 @@ def test_cli_install_mcp_idempotent(tmp_path, monkeypatch):
     target = tmp_path / 'mcp.json'
     monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(target))
 
-    runner.invoke(app, ['install-mcp'])
-    second = runner.invoke(app, ['install-mcp'])
+    runner.invoke(app, ['install-mcp', '--host', 'claude'])
+    second = runner.invoke(app, ['install-mcp', '--host', 'claude'])
 
     assert second.exit_code == 0
     assert 'unchanged' in second.output
     # No "restart Claude Code" line on a no-op — agents read this output
     # and shouldn't be told to restart when nothing changed.
-    assert 'restart Claude Code' not in second.output
+    assert 'restart claude' not in second.output
 
 
 def test_cli_uninstall_mcp(tmp_path, monkeypatch):
     target = tmp_path / 'mcp.json'
     monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(target))
-    runner.invoke(app, ['install-mcp'])
+    runner.invoke(app, ['install-mcp', '--host', 'claude'])
 
     result = runner.invoke(app, ['uninstall-mcp'])
 
@@ -230,3 +236,69 @@ def test_run_setup_registers_mcp(tmp_path, monkeypatch):
 
     assert mcp_config.exists()
     assert _read(mcp_config)['mcpServers']['agentclip']['command'] == 'agentclip-mcp'
+
+
+def test_install_all_hosts_registers_claude_codex_and_opencode(tmp_path, monkeypatch):
+    claude = tmp_path / 'claude' / 'mcp.json'
+    codex = tmp_path / 'codex' / 'config.json'
+    opencode = tmp_path / 'opencode' / 'opencode.json'
+    monkeypatch.setenv('AGENTCLIP_CLAUDE_MCP_CONFIG', str(claude))
+    monkeypatch.setenv('AGENTCLIP_CODEX_MCP_CONFIG', str(codex))
+    monkeypatch.setenv('AGENTCLIP_OPENCODE_MCP_CONFIG', str(opencode))
+    monkeypatch.setenv('HOME', str(tmp_path))
+
+    results = install_host_mcp_registrations(quiet=True)
+
+    assert {host for host, _, _ in results} == {'claude', 'codex', 'opencode'}
+    assert _read(claude)['mcpServers']['agentclip'] == {'command': 'agentclip-mcp'}
+    assert _read(codex)['mcpServers']['agentclip'] == {'command': 'agentclip-mcp'}
+    assert _read(opencode)['mcp']['agentclip'] == {
+        'command': ['agentclip-mcp'],
+        'enabled': True,
+        'type': 'local',
+    }
+    toml_text = (tmp_path / '.codex' / 'config.toml').read_text()
+    assert '[mcp_servers.agentclip]' in toml_text
+    assert 'command = "agentclip-mcp"' in toml_text
+
+
+def test_codex_toml_registration_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv('HOME', str(tmp_path))
+
+    _, first = _install_codex_toml_registration(quiet=True)
+    _, second = _install_codex_toml_registration(quiet=True)
+
+    assert first == 'added'
+    assert second == 'unchanged'
+
+
+def test_opencode_registration_preserves_schema_and_other_keys(tmp_path):
+    target = tmp_path / 'opencode.json'
+    target.write_text(json.dumps({'$schema': 'https://opencode.ai/config.json', 'theme': 'dark'}))
+
+    _install_opencode_mcp_registration(config_path=target, quiet=True)
+
+    config = _read(target)
+    assert config['$schema'] == 'https://opencode.ai/config.json'
+    assert config['theme'] == 'dark'
+    assert config['mcp']['agentclip']['command'] == ['agentclip-mcp']
+
+
+def test_cli_install_skill_can_target_codex(tmp_path, monkeypatch):
+    target = tmp_path / 'codex-skill'
+    monkeypatch.setenv('HOME', str(tmp_path))
+
+    result = runner.invoke(app, ['install-skill', '--host', 'codex', '--target', str(target)])
+
+    assert result.exit_code == 0, result.output
+    assert (target / 'SKILL.md').exists()
+
+
+def test_cli_install_mcp_rejects_shared_config_with_multiple_hosts(tmp_path):
+    result = runner.invoke(
+        app,
+        ['install-mcp', '--host', 'claude', '--host', 'codex', '--config', str(tmp_path / 'x')],
+    )
+
+    assert result.exit_code != 0
+    assert '--config only works when exactly one --host is selected' in result.output

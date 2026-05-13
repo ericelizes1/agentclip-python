@@ -67,7 +67,7 @@ def test_run_setup_short_circuits_when_marker_exists(
     marker.write_text('done')
     monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(skill_dir / 'mcp.json'))
     with (
-        patch.object(setup_mod, 'install_mcp_registration') as mock_mcp,
+        patch.object(setup_mod, 'install_host_mcp_registrations') as mock_mcp,
         patch.object(setup_mod, '_install_playwright_chromium') as mock_browser,
     ):
         ran = setup_mod.run_setup(marker_path=marker, skill_dir=skill_dir, quiet=True)
@@ -86,7 +86,9 @@ def test_run_setup_force_runs_even_with_marker(
     monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(skill_dir / 'mcp.json'))
     with (
         patch.object(
-            setup_mod, 'install_mcp_registration', return_value=(skill_dir, 'added')
+            setup_mod,
+            'install_host_mcp_registrations',
+            return_value=[('claude', skill_dir, 'added')],
         ) as mock_mcp,
         patch.object(setup_mod, '_install_playwright_chromium', return_value=True) as mock_browser,
     ):
@@ -109,7 +111,9 @@ def test_run_setup_writes_marker_after_first_run(
     monkeypatch.setenv('AGENTCLIP_MCP_CONFIG', str(skill_dir / 'mcp.json'))
     with (
         patch.object(
-            setup_mod, 'install_mcp_registration', return_value=(skill_dir, 'added')
+            setup_mod,
+            'install_host_mcp_registrations',
+            return_value=[('claude', skill_dir, 'added')],
         ),
         patch.object(setup_mod, '_install_playwright_chromium', return_value=True),
     ):
@@ -120,16 +124,16 @@ def test_run_setup_writes_marker_after_first_run(
 
 
 def test_install_skill_writes_skill_md(skill_dir: Path) -> None:
-    setup_mod._install_skill(quiet=True, skill_dir=skill_dir)
+    setup_mod.install_skills(quiet=True, skill_dir=skill_dir, hosts=('claude',))
     dest = skill_dir / 'SKILL.md'
     assert dest.exists()
     assert dest.stat().st_size > 0
 
 
 def test_install_skill_is_idempotent(skill_dir: Path) -> None:
-    setup_mod._install_skill(quiet=True, skill_dir=skill_dir)
+    setup_mod.install_skills(quiet=True, skill_dir=skill_dir, hosts=('claude',))
     first = (skill_dir / 'SKILL.md').read_bytes()
-    setup_mod._install_skill(quiet=True, skill_dir=skill_dir)
+    setup_mod.install_skills(quiet=True, skill_dir=skill_dir, hosts=('claude',))
     second = (skill_dir / 'SKILL.md').read_bytes()
     assert first == second
 
