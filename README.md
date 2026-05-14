@@ -1,15 +1,13 @@
-# agentclip
+# AgentClip Python SDK
 
-Turn your AI agent's QA runs into shareable clips.
+One install for shareable videos from your AI agent.
 
 [![PyPI](https://img.shields.io/pypi/v/agentclip.svg)](https://pypi.org/project/agentclip/)
 [![Python](https://img.shields.io/pypi/pyversions/agentclip.svg)](https://pypi.org/project/agentclip/)
 [![CI](https://github.com/ericelizes1/agentclip-python/actions/workflows/ci.yml/badge.svg)](https://github.com/ericelizes1/agentclip-python/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/pypi/l/agentclip.svg)](https://github.com/ericelizes1/agentclip-python/blob/main/LICENSE)
 
-Your AI agent drives the browser. AgentClip ships the browser tools, captures the moments that matter, and hands back a single URL anyone can watch.
-
-The product is the artifact (the clip URL) plus the prompt engineering (the bundled skill) that makes generated runs actually good. The backend, MCP plumbing, and CLI are commodity.
+Your agent drives the browser. AgentClip ships the browser tools, screenshot and recording capture, MCP server, CLI, and bundled agent skill that turns the work into a narrated URL anyone can watch.
 
 > **Live demo:** https://agentclip.dev
 
@@ -17,13 +15,24 @@ The product is the artifact (the clip URL) plus the prompt engineering (the bund
 
 Built in May 2026. Early. APIs may shift before a 1.0 tag.
 
-## Install
+## Quick start
 
 ```bash
 pip install agentclip
 ```
 
-That's it. The first time `agentclip` runs, lazy first-run setup wires the bundled skill, installs Chromium for the built-in browser runtime, and writes a marker so subsequent invocations are instant.
+Then restart your agent runtime and ask for a clip:
+
+> QA the signup flow on localhost:3000 and post a clip.
+
+That is the intended path. The first time `agentclip` runs, setup automatically:
+
+- installs the bundled `agentclip` skill
+- registers the `agentclip-mcp` server
+- installs Playwright Chromium for viewport-only browser capture
+- enables screenshots and short video/GIF-style recordings
+
+After that, your agent has the browser and slideshow tools it needs to create a narrated, shareable video.
 
 Or run with no install:
 
@@ -31,18 +40,31 @@ Or run with no install:
 uvx agentclip --help
 ```
 
-## 60-second example
+## Supported agents
 
-Ask your agent in plain English (Claude Code, Codex, OpenCode, or any MCP-aware client):
+`agentclip setup` installs the skill and MCP registration for the agent runtimes most people use locally:
 
-> QA the signup flow on localhost:3000 and post a clip.
+- `Claude Code` / Claude MCP config
+- `Codex`
+- `OpenCode`
+- any MCP client that can run `agentclip-mcp`
 
-The agent opens the built-in browser, captures screenshots or a short recording after each meaningful action, calls `slideshow_create`, `add_slide`, and `set_summary`, then hands back a share URL plus an edit URL for caption fixes later.
+If you only want one runtime:
+
+```bash
+agentclip setup --host codex
+agentclip setup --host opencode
+agentclip setup --host claude
+```
+
+Restart the agent after setup. Skills and MCP tools are loaded at agent startup, not mid-session.
+
+## 60-second CLI example
 
 Or use the CLI directly:
 
 ```bash
-agentclip slideshow create --title "Signup QA" --description "fresh-user flow"
+agentclip slideshow create --title "Signup QA" --description "Fresh-user signup flow."
 agentclip slideshow add <slideshow_id> /tmp/shot1.png --caption "Clicked Sign Up. Form posted."
 agentclip slideshow summary <slideshow_id> "Signup passed. One real bug at slide 4."
 
@@ -51,7 +73,7 @@ agentclip slideshow list
 agentclip slideshow delete <slideshow_id>
 ```
 
-## Agent runtime install
+## What gets installed
 
 `agentclip setup` now installs the bundled skill and MCP registration for:
 
@@ -97,6 +119,16 @@ Manual MCP shape, if you need it:
 ```
 
 Restart your agent runtime after install so the new tools and skill load.
+
+If the skill does not appear after restart, verify the install:
+
+```bash
+agentclip version
+agentclip whoami
+agentclip setup --force --host codex
+```
+
+Then fully quit and reopen the agent runtime. Starting a new chat is not always enough.
 
 ## Tools
 

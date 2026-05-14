@@ -5,12 +5,12 @@ build-backend = 'hatchling.build'
 [project]
 name = 'agentclip'
 version = '0.7.0'
-description = 'Turn AI agent QA runs into shareable slideshows.'
+description = 'Create narrated, shareable video walkthroughs from AI agent browser work.'
 readme = 'README.md'
 requires-python = '>=3.11'
 license = { text = 'MIT' }
 authors = [{ name = 'Eric Elizes', email = 'eric@elizes.dev' }]
-keywords = ['mcp', 'ai-agents', 'qa', 'slideshow', 'claude-code']
+keywords = ['mcp', 'ai-agents', 'qa', 'video', 'codex', 'opencode', 'claude-code']
 classifiers = [
     'Development Status :: 3 - Alpha',
     'License :: OSI Approved :: MIT License',
