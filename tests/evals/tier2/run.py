@@ -262,6 +262,7 @@ def claude_p(
     *,
     allow_tools: bool = False,
     max_budget_usd: float | None = None,
+    model: str | None = None,
 ) -> tuple[dict, dict]:
     """Invoke claude -p with structured-output validation. Returns (parsed, envelope).
 
@@ -291,6 +292,8 @@ def claude_p(
         cmd += ['--permission-mode', 'bypassPermissions']
     if max_budget_usd is not None:
         cmd += ['--max-budget-usd', str(max_budget_usd)]
+    if model:
+        cmd += ['--model', model]
     cmd.append(prompt)
 
     proc = subprocess.Popen(
@@ -336,7 +339,9 @@ def claude_p(
     return parsed, envelope
 
 
-def run_seed(seed: dict, rubric: dict) -> dict:
+def run_seed(
+    seed: dict, rubric: dict, sut_model: str | None = None, judge_model: str | None = None
+) -> dict:
     start = time.time()
     fixture_server = FixtureServer(seed['fixture'])
     fixture_server.start()
@@ -366,6 +371,7 @@ def run_seed(seed: dict, rubric: dict) -> dict:
             timeout=seed.get('timeout_s', 600),
             allow_tools=True,
             max_budget_usd=seed.get('max_budget_usd', 3.0),
+            model=sut_model,
         )
     except (
         subprocess.CalledProcessError,
@@ -391,7 +397,7 @@ def run_seed(seed: dict, rubric: dict) -> dict:
     # Judge the result.
     judge_prompt = build_judge_prompt(seed, sut_report, transcript, rubric)
     try:
-        judge_report, _ = claude_p(judge_prompt, JUDGE_SCHEMA, timeout=240)
+        judge_report, _ = claude_p(judge_prompt, JUDGE_SCHEMA, timeout=240, model=judge_model)
     except (
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
@@ -485,7 +491,26 @@ def print_summary(results: list[dict]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('seed_ids', nargs='*', help='Specific seed IDs to run (default: all)')
+    parser.add_argument(
+        '--sut-model',
+        default='sonnet',
+        help=(
+            'Model for the SUT (system-under-test) claude -p invocation. '
+            'Default sonnet — pinning explicitly because Tier 2 inherits the '
+            "invoker's configured default otherwise, which can be Opus ($$ and "
+            'slow). Sonnet handles the agentclip workflow with no quality loss '
+            'and ~2x speedup. Pass "" to inherit the user\'s default.'
+        ),
+    )
+    parser.add_argument(
+        '--judge-model',
+        default='sonnet',
+        help='Model for the judge claude -p invocation. Default sonnet.',
+    )
     args = parser.parse_args()
+
+    sut_model = args.sut_model or None
+    judge_model = args.judge_model or None
 
     seeds = json.loads(SEEDS_PATH.read_text())
     rubric = json.loads(RUBRIC_PATH.read_text())
@@ -498,11 +523,14 @@ def main() -> int:
             print(f'unknown seed ids: {sorted(missing)}', file=sys.stderr)
             return 2
 
-    print(f'running {len(seeds)} Tier 2 seed(s) — stub stands in for api.agentclip.dev')
+    print(
+        f'running {len(seeds)} Tier 2 seed(s) — stub stands in for api.agentclip.dev '
+        f'(sut={sut_model or "default"}, judge={judge_model or "default"})'
+    )
     results = []
     for seed in seeds:
         print(f'  -> {seed["id"]} ... ', end='', flush=True)
-        r = run_seed(seed, rubric)
+        r = run_seed(seed, rubric, sut_model=sut_model, judge_model=judge_model)
         write_result(r)
         results.append(r)
         if 'error' in r:
