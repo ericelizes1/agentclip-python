@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Signup flow — demo target</title>
+  <style>
+    body { font: 16px/1.5 -apple-system, system-ui, sans-serif; max-width: 920px; margin: 40px auto; color: #1a1a1a; }
+    header { text-align: center; padding: 60px 0; }
+    h1 { font-size: 48px; margin: 0 0 16px; }
+    p.sub { font-size: 20px; color: #555; margin: 0 0 32px; }
+    .cta { display: inline-block; background: #1a1a1a; color: white; padding: 14px 28px; border-radius: 8px; font-size: 18px; text-decoration: none; }
+    .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 32px; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); width: 360px; }
+    .modal.open { display: block; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 14px; color: #555; margin-bottom: 6px; }
+    .field input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
+    .field .error { color: #d32f2f; font-size: 13px; margin-top: 4px; display: none; }
+    .field.invalid input { border-color: #d32f2f; }
+    .field.invalid .error { display: block; }
+    .meter { height: 4px; background: #eee; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+    .meter > div { height: 100%; width: 30%; background: #d32f2f; transition: width 0.2s, background 0.2s; }
+    .meter > div.strong { width: 100%; background: #2e7d32; }
+    button#signup-submit { width: 100%; padding: 12px; background: #1a1a1a; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; }
+    button#signup-submit:disabled { background: #aaa; cursor: not-allowed; }
+    .verify-screen { display: none; text-align: center; padding: 80px 40px; }
+    .verify-screen.open { display: block; }
+    .email-preview { border: 1px solid #ddd; border-radius: 8px; padding: 24px; margin: 24px auto; max-width: 400px; text-align: left; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <header id="hero">
+    <h1 id="hero-headline">Ship faster, with fewer surprises.</h1>
+    <p class="sub" id="hero-sub">One narrated walkthrough per release. No more "what changed?" Slack threads.</p>
+    <a href="#" class="cta" id="signup-cta" onclick="document.getElementById('signup-modal').classList.add('open'); return false;">Sign up free</a>
+  </header>
+
+  <div class="modal" id="signup-modal">
+    <h2 style="margin: 0 0 20px;">Create your workspace</h2>
+    <div class="field" id="email-field">
+      <label for="email-input">Email</label>
+      <input type="email" id="email-input" placeholder="you@company.com">
+    </div>
+    <div class="field" id="password-field">
+      <label for="password-input">Password</label>
+      <input type="password" id="password-input" placeholder="At least 12 chars" oninput="updateMeter()">
+      <div class="meter" id="password-meter"><div id="password-meter-bar"></div></div>
+      <div class="error" id="password-error">Password too weak — needs 12+ chars with a number</div>
+    </div>
+    <div class="field" id="workspace-field">
+      <label for="workspace-input">Workspace name</label>
+      <input type="text" id="workspace-input" placeholder="acme-inc">
+    </div>
+    <button id="signup-submit" disabled onclick="document.getElementById('signup-modal').classList.remove('open'); document.getElementById('verify-screen').classList.add('open');">Create workspace</button>
+  </div>
+
+  <div class="verify-screen" id="verify-screen">
+    <h1>Check your inbox</h1>
+    <p>We sent a verification link to <strong id="verify-email">you@company.com</strong>.</p>
+    <div class="email-preview" id="email-preview">
+      <strong>Subject:</strong> Verify your AgentClip workspace<br>
+      <br>
+      Hi there — click below to verify your email and activate the <em>acme-inc</em> workspace:<br><br>
+      <a href="#">Verify email</a>
+    </div>
+    <p style="color: #555; font-size: 14px;">Didn't get it? <a href="#">Resend</a> or <a href="#">change email</a>.</p>
+  </div>
+
+  <script>
+    function updateMeter() {
+      var pw = document.getElementById('password-input').value;
+      var bar = document.getElementById('password-meter-bar');
+      var field = document.getElementById('password-field');
+      var submit = document.getElementById('signup-submit');
+      var strong = pw.length >= 12 && /\d/.test(pw);
+      if (strong) {
+        bar.classList.add('strong');
+        field.classList.remove('invalid');
+        submit.disabled = false;
+      } else {
+        bar.classList.remove('strong');
+        field.classList.add('invalid');
+        submit.disabled = true;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+[
+  {
+    "id": "demo-signup-flow",
+    "expected_run_type": "demo",
+    "user_prompt": "Demo the new signup flow on our staging site. Show it off like a recruiter would watch it.",
+    "audience": "recruiter, AI engineer, product-minded builder",
+    "slides": [
+      {
+        "frame": "Logged-out homepage. Hero with a single 'Sign up free' CTA above the fold.",
+        "moment": "The hero is doing one job: get you to sign up. No carousel, no marketing tour."
+      },
+      {
+        "frame": "Signup modal opens inline (no page reload). Three fields: email, password, workspace name. Password strength meter live.",
+        "moment": "Three fields total. Password meter is live, not on submit."
+      },
+      {
+        "frame": "Submitted with a weak password. Inline red helper text appears under the password field; submit button stays disabled until strength is acceptable.",
+        "moment": "Error is right where the field is, no scroll, no toast."
+      },
+      {
+        "frame": "Verification email screen. Big preview of the email that was sent, with a 'Resend' control and a 'change email' link.",
+        "moment": "Shows you the actual email preview so you know what to look for in inbox."
+      }
+    ]
+  },
+  {
+    "id": "qa-checkout-flow",
+    "expected_run_type": "qa",
+    "user_prompt": "QA the checkout flow on staging. Smoke test the happy path plus the obvious failure modes.",
+    "audience": "another engineer reviewing the QA pass",
+    "slides": [
+      {
+        "frame": "Cart page. Two items, subtotal $48, free-shipping banner triggered at $50 threshold.",
+        "moment": "Cart loaded clean. Free-shipping prompt appears at the right threshold."
+      },
+      {
+        "frame": "Checkout page. Address autocomplete worked on a known address. Payment defaults to saved card.",
+        "moment": "Address autocomplete and saved-card default both worked first try."
+      },
+      {
+        "frame": "Submitted with an expired card on purpose. Got a clear inline error 'Card expired — try another' and no charge attempted (verified via /admin).",
+        "moment": "Expired-card failure mode handled cleanly. No charge attempted."
+      },
+      {
+        "frame": "Re-submitted with valid card. Order-confirmation page renders, order ID is real, confirmation email triggers in test inbox.",
+        "moment": "Happy path passed end-to-end. Order ID and email both real."
+      },
+      {
+        "frame": "Refresh after success. Cart is cleared. Back button does not re-submit the order.",
+        "moment": "Post-success state is clean. No accidental re-submit on back."
+      }
+    ]
+  },
+  {
+    "id": "guide-cloudflare-radar",
+    "expected_run_type": "guide",
+    "user_prompt": "Make a guide showing how to inspect a real internet traffic shift using Cloudflare Radar.",
+    "audience": "AI engineer or product-minded builder who has not used Radar before",
+    "slides": [
+      {
+        "frame": "Cloudflare Radar open to the worldwide HTTP traffic chart, default 7-day view.",
+        "moment": "Start on a chart that already shows a signal. The dashboard tour adds nothing."
+      },
+      {
+        "frame": "Switched the comparison geography from worldwide to Germany. Chart now overlays the two and a clear divergence appears in the last 48 hours.",
+        "moment": "One filter change reveals a real divergence between worldwide and Germany."
+      },
+      {
+        "frame": "Changed time window from 7 days to 90 days. Divergence persists, so this is not a one-off spike.",
+        "moment": "Time-window check confirms this is a sustained shift, not a blip."
+      },
+      {
+        "frame": "Drilled into the AS-level breakdown for Germany. One specific ISP shows the bulk of the change.",
+        "moment": "AS-level breakdown localizes the change to a single ISP."
+      },
+      {
+        "frame": "Held on the AS-level chart with the ISP highlighted. The pattern is obvious and the chart stands alone.",
+        "moment": "The final chart explains itself. This is the frame to send."
+      }
+    ]
+  },
+  {
+    "id": "bug-503-signup",
+    "expected_run_type": "bug",
+    "user_prompt": "Repro the 503 on signup that QA flagged this morning.",
+    "audience": "the engineer who has to fix this",
+    "slides": [
+      {
+        "frame": "Cleared cookies and local storage. Cold-loaded /signup on staging.",
+        "moment": "Fresh session. No leftover auth state."
+      },
+      {
+        "frame": "Submitted the form with valid data. Network panel shows POST /api/auth/signup returning 503.",
+        "moment": "503 reproduces on first try with valid input."
+      },
+      {
+        "frame": "Inspected the response body. Stack trace mentions a missing Redis rate-limit key 'auth:signup:global'.",
+        "moment": "Root cause appears to be a missing rate-limit Redis key."
+      }
+    ]
+  }
+]

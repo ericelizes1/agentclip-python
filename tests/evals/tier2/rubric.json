@@ -1,0 +1,76 @@
+{
+  "banned_phrases": [
+    "welcome to",
+    "today we'll",
+    "today we will",
+    "i'm excited to show",
+    "in this walkthrough",
+    "in this demo we",
+    "without further ado",
+    "i am now clicking",
+    "i will now navigate",
+    "let me navigate",
+    "as we can see",
+    "observe how",
+    "notice that",
+    "in conclusion",
+    "seamless",
+    "robust",
+    "leverage",
+    "powerful",
+    "intuitive",
+    "best-in-class"
+  ],
+  "criteria": [
+    {
+      "name": "share_url_real",
+      "weight": 0.15,
+      "definition": "The share_url the agent reports MUST appear in the stub's transcript (i.e. came from a real slideshow_create call). Fabricated URLs fail."
+    },
+    {
+      "name": "run_type_match",
+      "weight": 0.15,
+      "definition": "run_type passed to slideshow_create MUST match the seed's expected_run_type. Passing the deprecated 'walkthrough' value for a demo prompt fails — the new skill teaches demo as canonical."
+    },
+    {
+      "name": "tool_order_correct",
+      "weight": 0.10,
+      "definition": "slideshow_create MUST happen before any slideshow_add_slide. slideshow_set_summary MUST be the last mutation. Out-of-order calls fail."
+    },
+    {
+      "name": "slide_count_in_range",
+      "weight": 0.05,
+      "definition": "Number of add_slide calls must be within [expected_min_slides, expected_max_slides]."
+    },
+    {
+      "name": "loom_voice_tells",
+      "weight": 0.15,
+      "definition": "For demo run_type: captions and description must contain Loom-style markers across the clip — first-person (I/we/our), direct viewer address (you/watch/notice), contractions (won't/doesn't/that's), or mild editorial reactions. A clip with zero of these reads as marketing copy and fails."
+    },
+    {
+      "name": "captions_land_a_point",
+      "weight": 0.10,
+      "definition": "Each caption lands on the non-obvious detail, not the literal screen content. Captions that enumerate visible elements fail."
+    },
+    {
+      "name": "no_banned_phrases",
+      "weight": 0.10,
+      "definition": "None of the banned phrases appear in title, description, captions, or summary. Case-insensitive substring match."
+    },
+    {
+      "name": "annotation_usage",
+      "weight": 0.10,
+      "definition": "When the seed has expects_annotations=true AND a caption uses deictic words (watch/notice/see/look at/right here/this part), the slide must have a non-empty annotations array. Captions pointing at nothing visual fail this criterion."
+    },
+    {
+      "name": "fallback_handled_cleanly",
+      "weight": 0.05,
+      "definition": "If the stub injected a failure (e.g. fail_run_type=walkthrough) and the agent's initial call was rejected with 400, the agent must have recovered and produced a working clip with a valid run_type. If no failure was injected, this criterion auto-passes."
+    },
+    {
+      "name": "no_fabricated_artifacts",
+      "weight": 0.05,
+      "definition": "The agent did NOT invent share_urls, slide counts, or success claims that aren't backed by stub transcript entries. Every slideshow_add_slide reported must have a matching 201 in the transcript."
+    }
+  ]
+}

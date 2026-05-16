@@ -1,0 +1,29 @@
+[
+  {
+    "id": "demo-signup-loom",
+    "user_prompt": "Demo the signup flow at {fixture_url} like you're recording a Loom for a friend who's never seen it. Show the happy path and one error state. Make me a clip I can share.",
+    "fixture": "signup-flow.html",
+    "expected_run_type": "demo",
+    "expected_min_slides": 3,
+    "expected_max_slides": 6,
+    "expects_annotations": true,
+    "stub_config": {},
+    "timeout_s": 600,
+    "max_budget_usd": 3.0
+  },
+  {
+    "id": "demo-signup-walkthrough-rejected-fallback",
+    "user_prompt": "Demo the signup flow at {fixture_url} like a quick walkthrough. Three or four slides showing what's in it. Make me a clip.",
+    "fixture": "signup-flow.html",
+    "expected_run_type": "demo",
+    "expected_min_slides": 3,
+    "expected_max_slides": 6,
+    "expects_annotations": true,
+    "stub_config": {
+      "fail_run_type": "walkthrough"
+    },
+    "note": "Validates the agent does NOT pick the deprecated 'walkthrough' value (rejected by stub with 400). The new skill teaches demo as the canonical choice for showcase use cases.",
+    "timeout_s": 600,
+    "max_budget_usd": 3.0
+  }
+]

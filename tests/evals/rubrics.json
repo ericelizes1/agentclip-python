@@ -1,0 +1,133 @@
+{
+  "_shared": {
+    "banned_phrases": [
+      "welcome to",
+      "today we'll",
+      "today we will",
+      "i'm excited to show",
+      "in this walkthrough",
+      "in this demo we",
+      "without further ado",
+      "i am now clicking",
+      "i will now navigate",
+      "let me navigate",
+      "as we can see",
+      "observe how",
+      "notice that",
+      "in conclusion",
+      "seamless",
+      "robust",
+      "leverage",
+      "powerful",
+      "intuitive",
+      "best-in-class"
+    ],
+    "criteria": [
+      {
+        "name": "title_is_noun_phrase",
+        "weight": 0.10,
+        "definition": "Title reads as a noun phrase, not a sentence or question. Examples that pass: 'Project-create flow QA on staging', 'Login regression repro'. Examples that fail: 'I tested the project-create flow', 'Did the login work?'"
+      },
+      {
+        "name": "description_is_spoken_intro",
+        "weight": 0.15,
+        "definition": "Description reads aloud as the first thing a presenter would say. No greeting, no 'welcome', no 'today we'll'. Direct, present-tense, lands the spine in 1-2 sentences."
+      },
+      {
+        "name": "no_banned_phrases",
+        "weight": 0.15,
+        "definition": "None of the banned phrases appear in title, description, captions, or summary. Case-insensitive substring match."
+      },
+      {
+        "name": "voice_consistency",
+        "weight": 0.15,
+        "definition": "One voice runs through intro, every caption, and outro. Not three voices stitched together."
+      },
+      {
+        "name": "captions_land_a_point",
+        "weight": 0.20,
+        "definition": "Each caption lands on the non-obvious detail, not the literal screen content. Captions that enumerate visible elements ('Page shows hero, nav, footer') fail. Captions that name what is interesting or surprising about that state pass."
+      },
+      {
+        "name": "summary_under_80_words",
+        "weight": 0.05,
+        "definition": "Summary is 80 words or fewer."
+      },
+      {
+        "name": "run_type_match",
+        "weight": 0.20,
+        "definition": "The chosen run_type matches the trigger phrasing of the user_prompt. demo=showcase/walk through/show off. qa=QA/smoke/verify/regression. guide=how-to/explain/compare/investigate. bug=repro/reproduce/bug/broken."
+      }
+    ]
+  },
+  "demo": {
+    "voice_definition": "Someone who just shipped a thing and hit record on Loom to show you. First-person ('I'll show you', 'we just shipped'). Conversational, contractions throughout. Acknowledges the viewer ('watch this', 'you can see'). Mild editorial reactions allowed ('which I really like', 'took us a few iterations'). NOT marketing copy, NOT design-critic tightness. The vibe to match: a friend recording a quick walkthrough of something they're proud of.",
+    "extra_criteria": [
+      {
+        "name": "loom_voice_tells",
+        "weight": 0.15,
+        "definition": "Captions and description should contain at least 2-3 Loom-style markers across the clip: first-person ('I/we/our'), direct address ('you/watch/notice'), contractions ('won't', 'doesn't', 'that's'), or mild editorial ('really nice', 'pretty clean', 'took some iteration'). A clip with zero of these reads as Linear marketing copy and fails this criterion. Don't require ALL slides to use them — natural conversation rhythm matters more than checking every caption."
+      },
+      {
+        "name": "no_meta_framing",
+        "weight": 0.05,
+        "definition": "Description does not open with meta-framing like 'A 30-second look at...', 'Here's a quick walkthrough of...', or 'Today I'll be showing you...'. The first words should land directly on what the viewer is about to see, not on what kind of clip this is."
+      },
+      {
+        "name": "title_drops_engineer_frame",
+        "weight": 0.05,
+        "definition": "Demo title is product-y, not engineer-y. 'New signup flow', 'Signup, redesigned', 'Walking through the new signup' all pass. 'Signup flow on staging', 'Signup QA results', or anything mentioning environments/branches/tickets fails — those leak the engineering frame into a demo title."
+      }
+    ]
+  },
+  "qa": {
+    "voice_definition": "Someone running a checklist out loud for another engineer. Each slide ends with a verdict: worked / passed / broken / clean. Brisk, blunt, factual. NO Loom warmth here — qa voice rewards tightness, not friendliness. Editorial asides ('which I really like') are wrong register for qa.",
+    "extra_criteria": [
+      {
+        "name": "every_slide_has_verdict",
+        "weight": 0.10,
+        "definition": "Each caption ends with or contains a clear verdict (worked / passed / failed / broken / clean / good / bad / correct). Failures must be called out explicitly with what failed."
+      },
+      {
+        "name": "summary_has_passfail_counts",
+        "weight": 0.05,
+        "definition": "Summary names pass/fail counts (e.g. '5/5 passed') or the specific bugs found with slide references."
+      }
+    ]
+  },
+  "guide": {
+    "voice_definition": "Friendly product-explainer YouTube channel (Fireship, Theo, Web Dev Simplified vibe). Second-person ('you'll notice', 'watch what happens'). Stakes-aware ('most signup flows still get this wrong'). Editorial asides allowed ('small thing, big difference'). Specifics over generalities. NOT clinical analyst — there should be warmth.",
+    "extra_criteria": [
+      {
+        "name": "youtuber_voice_tells",
+        "weight": 0.10,
+        "definition": "Captions and description should contain at least 2-3 YouTuber-style markers across the clip: second-person address ('you/watch/notice/you'll'), stakes-aware contrast ('most X get this wrong', 'unlike most...'), or editorial asides ('small thing big difference', 'honestly the move'). A clip with zero of these reads as a clinical research report and fails. Don't require EVERY slide to use them."
+      },
+      {
+        "name": "lands_a_takeaway",
+        "weight": 0.05,
+        "definition": "The clip lands one specific conclusion, not multiple loose observations. The final caption or summary names the takeaway."
+      },
+      {
+        "name": "specifics_over_generalities",
+        "weight": 0.05,
+        "definition": "Captions name concrete numbers, geographies, ISPs, model names, time windows — not vague gestures at 'the data' or 'the trend'."
+      }
+    ]
+  },
+  "bug": {
+    "voice_definition": "Senior engineer narrating a repro to another senior engineer. No setup, no closure. Just facts. Past-tense is fine because you're recapping.",
+    "extra_criteria": [
+      {
+        "name": "establish_reproduce_prove",
+        "weight": 0.10,
+        "definition": "The captions follow establish-state -> reproduce -> prove. Not all three slides need be present but the arc must read as a repro, not a tour."
+      },
+      {
+        "name": "summary_states_outcome",
+        "weight": 0.05,
+        "definition": "Summary states the bug outcome with a slide reference. 'Bug confirmed at slide 2. /api/auth/signup returns 503 instead of either succeeding or rate-limit-error.' is the target shape."
+      }
+    ]
+  }
+}
