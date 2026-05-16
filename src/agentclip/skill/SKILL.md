@@ -85,7 +85,7 @@ A clip is a story, not a flipbook. Before clicking, answer two questions:
 
 | Trigger phrasing in the user prompt | `run_type` | Voice |
 |---|---|---|
-| "demo", "show off", "showcase", "walk through", "onboarding", "first impression", "fresh user", "feature reveal" | `demo` | presenter, present-tense, lands on non-obvious detail |
+| "demo", "show off", "showcase", "walk through", "walkthrough", "onboarding", "first impression", "fresh user", "feature reveal" | `demo` | Loom recording — first-person, casual, present-tense, lands on non-obvious detail |
 | "QA", "smoke test", "smoke", "regression", "verify", "did this work" | `qa` | checklist, brisk, blunt pass/fail verdicts |
 | "guide", "how-to", "explain", "compare", "teardown", "vs", "investigate", "inspect", "research" | `guide` | analyst, comparative, lands a takeaway |
 | "repro", "reproduce", "bug", "broken", "failing flow", "incident" | `bug` | terse, factual, stack-trace-adjacent |
@@ -222,6 +222,8 @@ Read every caption out loud in your head before shipping it. TTS will say what y
 
 Voice: someone who just shipped something and hit record on Loom to show you. Casual. First-person ("I'll show you," "we just shipped"). Acknowledges the viewer ("watch this," "you can see"). Mild editorial reactions allowed ("which I really like," "took us a few iterations"). Contractions throughout. **Do not** sound like marketing copy.
 
+This voice is fixed by the run type, **not** by how the user phrased the request. "Demo it like a quick walkthrough," "just show what's in it," "give me a tour" — all still get the full Loom voice. A flat request never licenses flat narration: if the run type is `demo`, the captions are first-person and casual, period. Neutral product narration ("The form contains three fields") is a failure, not a safe default.
+
 Example clip (use this as a reference, not as a template — write fresh for the actual content):
 
 ```
@@ -287,7 +289,7 @@ When you didn't pick a type or none fit cleanly, use `demo`. The Loom voice read
 
 - **demo:** *"New signup flow"*, *"Signup, redesigned"*, *"Walking through the new signup"*. **Not** *"Signup flow on staging"* — that leaks the QA frame into a demo title.
 - **qa:** *"Project-create flow QA on staging"*, *"Checkout smoke test"*, *"Login regression"*. Engineer-readable is correct here — the audience is another engineer.
-- **guide:** *"How to inspect internet traffic with Cloudflare Radar"*, *"Linear vs Notion: project switching"*. Often phrased as "How to X" or "X vs Y."
+- **guide:** *"ISP-level attribution with Cloudflare Radar"*, *"Linear vs Notion: project switching"*. Name the payoff or the comparison — still a noun phrase. **Not** *"How to inspect internet traffic with Cloudflare Radar"* — that's an instructional sentence, not a title.
 - **bug:** *"Login regression repro"*, *"Rate-limit 503 on signup"*. Tight, blunt, names the bug.
 
 ### Universal narration tips (apply to every type)
@@ -321,6 +323,7 @@ prompt: |
 
   Step 1. Enumerate every distinct UI element visible in the frame. Don't write a sentence; list them.
   Step 2. Decide whether the caption (a) names something *not* obvious from the frame's literal contents (good), or (b) reads as a description of what's visible (bad — that's the screenshot's job). For qa, additionally require an explicit verdict (worked/passed/broken/clean). For bug, require factual past-tense framing. For guide, require a specific finding, not a UX observation.
+  Step 2b. Check the caption's voice register against the run type. For demo, the caption must sound like a person narrating a Loom — first-person and/or direct viewer address, contractions, casual. A demo caption written as detached third-person product copy ("The form contains three fields," "The submit button is disabled") fails here even if it lands a point — set matches=false and rewrite it in voice.
   Step 3. Check the caption against the banned-phrase list: "welcome to", "today we'll", "I'm excited to show", "in this walkthrough", "I am now clicking", "let me navigate", "as we can see", "observe how", "notice that", "in conclusion", "seamless", "robust", "leverage", "powerful", "intuitive". Case-insensitive substring.
   Step 4. If it fails on any axis, write a one-line replacement caption in the run-type's voice that does land a point. Stay close to the original facts.
 
@@ -367,6 +370,7 @@ prompt: |
 
   Check:
   - voice_consistent: does one voice run through intro + every caption? If even one slide breaks register (analyst voice in a demo clip, court-reporter past tense in a present-tense run), flag it.
+  - voice_matches_register: do the captions actually land the voice in the definition above — not just match each other? Captions that are uniformly flat still fail this. A demo clip whose captions read as detached third-person product copy ("The form contains three fields") is wrong even if all N captions are wrong the same way. The intro and outro carrying the voice does not cover for flat captions. Flag every caption that doesn't carry the run-type voice.
   - opener_shape: does the description avoid banned openers ("welcome to", "today we'll", "I'm excited to show", "in this walkthrough", "A 30-second look at...", and meta-framing in general)?
   - banned_phrases: scan title, description, and every caption against the universal banned-phrase list. Return every match.
   - spine_adherence: does the clip actually deliver on the picked spine? If three slides chase a different thread, flag it.
@@ -375,6 +379,7 @@ prompt: |
   Return ONLY JSON matching this schema:
   {
     "voice_consistent": true | false,
+    "voice_matches_register": true | false,
     "voice_issues": ["slide N: reason", ...],
     "opener_shape_ok": true | false,
     "opener_issue": "..." | null,
@@ -386,7 +391,7 @@ prompt: |
 ```
 
 **Acting on the result:**
-- `voice_consistent: false` or `banned_phrases_found` nonempty → call `slideshow_update_slide` on each flagged slide with a rewritten caption that fixes the issue. One pass — don't loop.
+- `voice_consistent: false`, `voice_matches_register: false`, or `banned_phrases_found` nonempty → call `slideshow_update_slide` on each slide named in `voice_issues` with a rewritten caption that fixes the issue. One pass — don't loop.
 - `opener_shape_ok: false` → call `slideshow_create`'s update path or, if no such path, accept that the description is locked at create time and note in the final report that next clip should pick a better opener.
 - Always use `suggested_summary` as the input to `slideshow_set_summary` unless you have a strong reason not to. The reviewer wrote it in the right voice; trust it.
 
