@@ -66,7 +66,7 @@ INSTALL_MCP_CONFIG_OPTION = typer.Option(
 UNINSTALL_MCP_CONFIG_OPTION = typer.Option(
     None,
     '--config',
-    help='Path to mcp.json. Defaults to ~/.claude/mcp.json.',
+    help='Path to the MCP config file. Defaults to ~/.claude.json for claude.',
 )
 HOSTS_OPTION = typer.Option(
     None,
@@ -99,9 +99,7 @@ app.add_typer(auth_app, name='auth')
 # setup. `version` is a status query, `setup` runs setup itself, and
 # `install-skill` is the manual fallback for the same step setup
 # performs — running it nested would be confusing.
-_SKIP_LAZY_SETUP = frozenset(
-    {'version', 'setup', 'install-skill', 'install-mcp', 'uninstall-mcp'}
-)
+_SKIP_LAZY_SETUP = frozenset({'version', 'setup', 'install-skill', 'install-mcp', 'uninstall-mcp'})
 
 
 def _normalize_hosts(hosts: list[str] | None) -> tuple[str, ...]:
@@ -209,8 +207,11 @@ def slideshow_create(
         '-T',
         help=(
             'Run type — drives the narration voice + pacing. One of: '
-            'walkthrough (feature reveal), guide (how-to), bug (repro). '
-            'Defaults to walkthrough.'
+            'demo (showcase / feature reveal / recruiter clip), '
+            'qa (smoke / regression / verification), '
+            'guide (how-to / investigation / comparative analysis), or '
+            'bug (repro / evidence). Defaults to demo. '
+            '"walkthrough" is accepted as a deprecated synonym for demo.'
         ),
     ),
     as_json: bool = typer.Option(False, '--json', help='Emit JSON instead of a summary.'),
@@ -899,6 +900,72 @@ def setup(
 def version() -> None:
     """Print the installed agentclip version."""
     typer.echo(__version__)
+
+
+@app.command('capture')
+def capture(
+    url: str = typer.Argument(..., help='URL to load.'),
+    out: Path = typer.Option(
+        ...,
+        '--out',
+        '-o',
+        help='Output PNG path.',
+        dir_okay=False,
+    ),
+    width: int = typer.Option(1440, '--width', help='Viewport width (default 1440).'),
+    height: int = typer.Option(900, '--height', help='Viewport height (default 900).'),
+    wait: str = typer.Option(
+        'networkidle',
+        '--wait',
+        help='Playwright wait_until: load, domcontentloaded, networkidle, or commit.',
+    ),
+    full_page: bool = typer.Option(
+        False,
+        '--full-page',
+        help='Capture the full scrollable page instead of just the viewport.',
+    ),
+    timeout_ms: int = typer.Option(
+        20000,
+        '--timeout-ms',
+        help='Navigation timeout in milliseconds (default 20000).',
+    ),
+) -> None:
+    """Capture a viewport-only PNG of a URL to disk.
+
+    Same Playwright runtime the MCP browser tools use, exposed as a single
+    one-shot command so an agent can produce a clip-ready screenshot
+    without keeping a session open. The output is viewport-only -- never
+    contains the IDE, terminal, or other tabs -- which is the privacy
+    boundary AgentClip relies on. Pass the resulting path straight to
+    ``agentclip slideshow add``.
+    """
+    # Lazy import so a missing playwright install doesn't break the CLI's
+    # other subcommands -- only `capture` actually needs it.
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise _bail(
+            'playwright is not installed. Run `pip install agentclip` or '
+            '`agentclip setup --force` to install the bundled Chromium.'
+        ) from exc
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            try:
+                context = browser.new_context(viewport={'width': width, 'height': height})
+                page = context.new_page()
+                page.set_default_navigation_timeout(timeout_ms)
+                page.goto(url, wait_until=wait)
+                page.screenshot(path=str(out), full_page=full_page)
+            finally:
+                browser.close()
+    except Exception as exc:  # noqa: BLE001 - surface Playwright errors as CLI failures
+        raise _bail(f'capture failed: {exc}') from exc
+
+    size = out.stat().st_size
+    typer.echo(f'wrote {out} ({size} bytes, {width}x{height})')
 
 
 def _require_token(slideshow_id: str) -> str:

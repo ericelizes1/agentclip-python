@@ -110,8 +110,8 @@ def test_require_playwright_message_when_missing(monkeypatch):
         mcp_server._require_playwright()
     msg = str(exc.value)
     # Should point at the recovery action, not at the old [browser] extra.
-    assert "pip install" in msg
-    assert "agentclip" in msg
+    assert 'pip install' in msg
+    assert 'agentclip' in msg
 
 
 def test_ensure_chromium_installed_skips_when_present(monkeypatch):
@@ -119,9 +119,7 @@ def test_ensure_chromium_installed_skips_when_present(monkeypatch):
     not shell out to `playwright install`. Pin this so first-use
     latency stays cold-start-only — every subsequent browser_open
     should be near-instant."""
-    monkeypatch.setattr(
-        Path, 'exists', lambda self: True
-    )
+    monkeypatch.setattr(Path, 'exists', lambda self: True)
     called = {'n': 0}
 
     def fake_run(*args, **kwargs):
@@ -129,6 +127,7 @@ def test_ensure_chromium_installed_skips_when_present(monkeypatch):
         return None
 
     import subprocess
+
     monkeypatch.setattr(subprocess, 'run', fake_run)
     mcp_server._ensure_chromium_installed(verbose=False)
     assert called['n'] == 0
@@ -141,8 +140,11 @@ def test_open_screenshot_close_happy_path(tmp_path):
     requested path, and close releases the session id."""
     with _serve_fixture() as url:
         opened = mcp_server._browser_open_impl(
-            url=url, viewport_width=1440, viewport_height=900,
-            headless=True, wait_until='networkidle',
+            url=url,
+            viewport_width=1440,
+            viewport_height=900,
+            headless=True,
+            wait_until='networkidle',
         )
         sid = opened['session_id']
         assert opened['title'] == 'browser-test fixture'
@@ -169,19 +171,30 @@ def test_type_click_and_wait_for_text(tmp_path):
     Exercises type, click, wait_for_text, and get_text together."""
     with _serve_fixture() as url:
         opened = mcp_server._browser_open_impl(
-            url=url, viewport_width=1440, viewport_height=900,
-            headless=True, wait_until='networkidle',
+            url=url,
+            viewport_width=1440,
+            viewport_height=900,
+            headless=True,
+            wait_until='networkidle',
         )
         sid = opened['session_id']
         try:
             typed = mcp_server._browser_type_impl(
-                sid, text='hello there', placeholder='Ask the fixture...',
-                selector=None, role=None, delay_ms=15,
+                sid,
+                text='hello there',
+                placeholder='Ask the fixture...',
+                selector=None,
+                role=None,
+                delay_ms=15,
             )
             assert typed['typed_chars'] == len('hello there')
 
             mcp_server._browser_click_impl(
-                sid, selector='#go', text=None, role=None, name=None,
+                sid,
+                selector='#go',
+                text=None,
+                role=None,
+                name=None,
             )
 
             matched = mcp_server._browser_wait_for_text_impl(
@@ -204,8 +217,11 @@ def test_screenshot_default_path_lands_under_tmp(tmp_path, monkeypatch):
 
     with _serve_fixture() as url:
         opened = mcp_server._browser_open_impl(
-            url=url, viewport_width=1440, viewport_height=900,
-            headless=True, wait_until='networkidle',
+            url=url,
+            viewport_width=1440,
+            viewport_height=900,
+            headless=True,
+            wait_until='networkidle',
         )
         sid = opened['session_id']
         try:
@@ -224,8 +240,11 @@ def test_wait_for_text_times_out_cleanly(tmp_path):
     with a useful message — agents act on that text."""
     with _serve_fixture() as url:
         opened = mcp_server._browser_open_impl(
-            url=url, viewport_width=1440, viewport_height=900,
-            headless=True, wait_until='networkidle',
+            url=url,
+            viewport_width=1440,
+            viewport_height=900,
+            headless=True,
+            wait_until='networkidle',
         )
         sid = opened['session_id']
         try:
@@ -275,15 +294,17 @@ def test_browser_tools_are_async():
         'browser_get_text',
         'browser_close',
         'browser_list_sessions',
+        'browser_start_recording',
+        'browser_stop_recording',
     ):
         fn = getattr(mcp_server, name)
         # FastMCP wraps the original function; the wrapped callable still
         # has `__wrapped__` (or the wrapper itself is a coroutine fn).
         target = getattr(fn, '__wrapped__', fn)
         assert inspect.iscoroutinefunction(target), (
-            f"{name} must be async — sync browser tools crash under "
-            f"FastMCP because Playwright sync refuses to run inside an "
-            f"asyncio loop. See _run_in_browser_thread in mcp_server.py."
+            f'{name} must be async — sync browser tools crash under '
+            f'FastMCP because Playwright sync refuses to run inside an '
+            f'asyncio loop. See _run_in_browser_thread in mcp_server.py.'
         )
 
 
@@ -301,9 +322,7 @@ def test_async_open_screenshot_close_under_event_loop(tmp_path):
             assert opened['title'] == 'browser-test fixture'
 
             out = tmp_path / 'shot-async.png'
-            shot = await mcp_server.browser_screenshot(
-                session_id=sid, out_path=str(out)
-            )
+            shot = await mcp_server.browser_screenshot(session_id=sid, out_path=str(out))
             assert shot['path'] == str(out)
             assert out.read_bytes()[:8] == b'\x89PNG\r\n\x1a\n'
 
@@ -311,3 +330,166 @@ def test_async_open_screenshot_close_under_event_loop(tmp_path):
             assert closed == {'closed': True}
 
     asyncio.run(run())
+
+
+@needs_browser
+def test_start_recording_without_record_flag_returns_helpful_error(tmp_path):
+    """If the agent opens a session without record_video=True and then
+    calls start_recording, raise a clear error pointing at the right fix.
+    This is the recovery the skill steers agents toward."""
+    with _serve_fixture() as url:
+        opened = mcp_server._browser_open_impl(
+            url=url,
+            viewport_width=800,
+            viewport_height=600,
+            headless=True,
+            wait_until='load',
+        )
+        sid = opened['session_id']
+        try:
+            with pytest.raises(ValueError, match='record_video=True'):
+                mcp_server._browser_start_recording_impl(sid)
+        finally:
+            mcp_server._browser_close_impl(sid)
+
+
+@needs_browser
+def test_record_open_and_stop_writes_webm(tmp_path):
+    """End-to-end: open with record_video=True, do an interaction, stop
+    recording, get back a real WebM on disk. Pins the privacy guarantee
+    (viewport-only) and the wire shape (path/bytes/format)."""
+    with _serve_fixture() as url:
+        opened = mcp_server._browser_open_impl(
+            url=url,
+            viewport_width=800,
+            viewport_height=600,
+            headless=True,
+            wait_until='load',
+            record_video=True,
+        )
+        assert opened['recording_active'] is True
+        sid = opened['session_id']
+
+        # start_recording is a no-op confirmation when already recording.
+        confirmed = mcp_server._browser_start_recording_impl(sid)
+        assert confirmed == {'session_id': sid, 'recording_active': True}
+
+        # Drive one interaction so the video has at least one frame change.
+        mcp_server._browser_click_impl(sid, '#go', None, None, None)
+
+        result = mcp_server._browser_stop_recording_impl(sid)
+        assert result['format'] == 'webm'
+        assert result['bytes'] > 0
+        assert Path(result['path']).exists()
+        assert Path(result['path']).suffix == '.webm'
+
+
+@needs_browser
+def test_screenshot_with_annotation_circles_selector(tmp_path):
+    """Pin: passing annotations=[{type: 'circle', target: '#hero', label: 'X'}]
+    yields a PNG whose bytes differ from the un-annotated capture of the
+    same page. The visual difference is the only honest assertion (we
+    can't grep an SVG inside a PNG), but it's enough to catch a regression
+    where the overlay isn't actually painted before the screenshot."""
+    with _serve_fixture() as url:
+        opened = mcp_server._browser_open_impl(
+            url=url,
+            viewport_width=800,
+            viewport_height=600,
+            headless=True,
+            wait_until='load',
+        )
+        sid = opened['session_id']
+        try:
+            plain_path = tmp_path / 'plain.png'
+            annotated_path = tmp_path / 'annotated.png'
+            plain = mcp_server._browser_screenshot_impl(
+                sid,
+                str(plain_path),
+                full_page=False,
+            )
+            annotated = mcp_server._browser_screenshot_impl(
+                sid,
+                str(annotated_path),
+                full_page=False,
+                annotations=[
+                    {'type': 'circle', 'target': '#hero', 'label': 'live'},
+                ],
+            )
+            assert 'annotations' in annotated
+            assert annotated['annotations']['failed'] == []
+            assert len(annotated['annotations']['placed']) == 1
+            assert annotated['annotations']['placed'][0]['type'] == 'circle'
+            # Annotated PNG must differ from plain -- the overlay was drawn.
+            assert plain_path.read_bytes() != annotated_path.read_bytes()
+        finally:
+            mcp_server._browser_close_impl(sid)
+
+
+@needs_browser
+def test_screenshot_annotation_reports_missing_target(tmp_path):
+    """A bad selector lands in `failed[]`, not as an exception. Lets the
+    agent recover with a better selector instead of having to wrap every
+    call in a try/except."""
+    out = tmp_path / 'shot.png'
+    with _serve_fixture() as url:
+        opened = mcp_server._browser_open_impl(
+            url=url,
+            viewport_width=800,
+            viewport_height=600,
+            headless=True,
+            wait_until='load',
+        )
+        sid = opened['session_id']
+        try:
+            result = mcp_server._browser_screenshot_impl(
+                sid,
+                str(out),
+                full_page=False,
+                annotations=[
+                    {'type': 'circle', 'target': '#does-not-exist'},
+                ],
+            )
+            assert result['annotations']['placed'] == []
+            assert len(result['annotations']['failed']) == 1
+            assert result['annotations']['failed'][0]['reason'] == 'target not found'
+            # Screenshot still wrote -- the failure is informational, not fatal.
+            assert out.exists()
+        finally:
+            mcp_server._browser_close_impl(sid)
+
+
+@needs_browser
+def test_screenshot_overlay_removed_after_capture(tmp_path):
+    """The overlay must be torn down after the screenshot so subsequent
+    captures, page.evaluate calls, or interactions don't see it. Pins
+    the cleanup that prevents 'annotations stuck on the page' bugs."""
+    out1 = tmp_path / 'first.png'
+    out2 = tmp_path / 'second.png'
+    with _serve_fixture() as url:
+        opened = mcp_server._browser_open_impl(
+            url=url,
+            viewport_width=800,
+            viewport_height=600,
+            headless=True,
+            wait_until='load',
+        )
+        sid = opened['session_id']
+        try:
+            mcp_server._browser_screenshot_impl(
+                sid,
+                str(out1),
+                full_page=False,
+                annotations=[{'type': 'rect', 'target': '#hero', 'label': 'first'}],
+            )
+            # After the annotated capture, the overlay should be gone.
+            still_present = mcp_server._browser_sessions[sid]['page'].evaluate(
+                f"() => !!document.getElementById('{mcp_server._ANNOTATION_OVERLAY_ID}')"
+            )
+            assert still_present is False
+            # Second un-annotated capture should match the plain baseline,
+            # not the prior annotated frame.
+            mcp_server._browser_screenshot_impl(sid, str(out2), full_page=False)
+            assert out1.read_bytes() != out2.read_bytes()
+        finally:
+            mcp_server._browser_close_impl(sid)

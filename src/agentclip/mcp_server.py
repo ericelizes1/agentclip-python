@@ -68,11 +68,13 @@ def slideshow_create(
             description=(
                 'What kind of clip this is — drives the narration voice + '
                 'pacing across the whole rendered video. Pick from the '
-                "user's trigger phrasing per SKILL.md: walkthrough "
-                '(feature reveal — "demo", "show this off", "what '
-                'shipped"), guide (how-to — "how do I X", "tutorial"), '
-                'bug (repro — "reproduce", "what\'s broken"). Defaults to '
-                'walkthrough server-side if omitted.'
+                "user's trigger phrasing per SKILL.md: demo (showcase / "
+                'recruiter — "demo this", "show this off", "what shipped"), '
+                'qa (verification — "QA this", "smoke test", "regression"), '
+                'guide (how-to / investigation — "how do I X", "explain", '
+                '"compare", "investigate"), bug (repro — "reproduce", '
+                '"what\'s broken"). Defaults to demo server-side if omitted. '
+                '"walkthrough" is accepted as a deprecated synonym for demo.'
             )
         ),
     ] = None,
@@ -105,7 +107,6 @@ def slideshow_create(
         'share_url': result.share_url,
         'write_token': result.write_token,
     }
-
 
 
 @mcp.tool()
@@ -278,9 +279,7 @@ _DEFAULT_SHOT_DIR = Path('/tmp/agentclip-shots')
 # max_workers=1 makes this effectively a serializer — all browser ops run
 # in the same OS thread, in the order they're submitted. Cheap and exactly
 # what Playwright's sync API needs.
-_browser_executor = ThreadPoolExecutor(
-    max_workers=1, thread_name_prefix='agentclip-browser'
-)
+_browser_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='agentclip-browser')
 
 
 async def _run_in_browser_thread(func, *args, **kwargs):
@@ -292,9 +291,7 @@ async def _run_in_browser_thread(func, *args, **kwargs):
     lifetime.
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        _browser_executor, lambda: func(*args, **kwargs)
-    )
+    return await loop.run_in_executor(_browser_executor, lambda: func(*args, **kwargs))
 
 
 def _require_playwright() -> Any:
@@ -306,10 +303,10 @@ def _require_playwright() -> Any:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise RuntimeError(
-            "Playwright is missing — agentclip ships it as a core "
-            "dependency, so this usually means agentclip was installed "
-            "with --no-deps or in a stale env. Run: "
-            "`pip install --upgrade agentclip`"
+            'Playwright is missing — agentclip ships it as a core '
+            'dependency, so this usually means agentclip was installed '
+            'with --no-deps or in a stale env. Run: '
+            '`pip install --upgrade agentclip`'
         ) from exc
     return sync_playwright
 
@@ -367,7 +364,7 @@ def _get_session(session_id: str) -> _BrowserSession:
     session = _browser_sessions.get(session_id)
     if session is None:
         raise ValueError(
-            f"unknown browser session {session_id!r}. "
+            f'unknown browser session {session_id!r}. '
             "Open one with browser_open first; sessions don't survive a server restart."
         )
     return session
@@ -381,21 +378,30 @@ def _get_session(session_id: str) -> _BrowserSession:
 # the FastMCP-facing functions stay async — the shape FastMCP requires.
 
 
+_RECORDINGS_DIR = Path('/tmp/agentclip-recordings')
+
+
 def _browser_open_impl(
     url: str,
     viewport_width: int,
     viewport_height: int,
     headless: bool,
     wait_until: str,
+    record_video: bool = False,
 ) -> dict:
     _ensure_chromium_installed()
     sync_playwright = _require_playwright()
     pw_cm = sync_playwright()
     pw = pw_cm.start()
     browser = pw.chromium.launch(headless=headless)
-    context = browser.new_context(
-        viewport={'width': viewport_width, 'height': viewport_height}
-    )
+    context_kwargs: dict[str, Any] = {
+        'viewport': {'width': viewport_width, 'height': viewport_height},
+    }
+    if record_video:
+        _RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        context_kwargs['record_video_dir'] = str(_RECORDINGS_DIR)
+        context_kwargs['record_video_size'] = {'width': viewport_width, 'height': viewport_height}
+    context = browser.new_context(**context_kwargs)
     page = context.new_page()
     page.goto(url, wait_until=wait_until)
 
@@ -406,12 +412,16 @@ def _browser_open_impl(
         'browser': browser,
         'context': context,
         'page': page,
+        'record_video': record_video,
+        'recording_active': record_video,
+        'video_path': None,
     }
     return {
         'session_id': session_id,
         'url': page.url,
         'title': page.title(),
         'viewport': {'width': viewport_width, 'height': viewport_height},
+        'recording_active': record_video,
     }
 
 
@@ -474,7 +484,7 @@ def _browser_click_impl(
         else:
             page.get_by_role(role).first.click()
     else:
-        raise ValueError("browser_click needs one of: selector, text, or role.")
+        raise ValueError('browser_click needs one of: selector, text, or role.')
 
     return {'url': page.url, 'title': page.title()}
 
@@ -502,15 +512,213 @@ def _browser_wait_for_text_impl(
                 waited = int((timeout_ms / 1000 - (deadline - time.time())) * 1000)
                 return {'matched': cand, 'waited_ms': waited}
         time.sleep(0.5)
-    raise TimeoutError(
-        f'none of {candidates!r} appeared in page body within {timeout_ms}ms'
-    )
+    raise TimeoutError(f'none of {candidates!r} appeared in page body within {timeout_ms}ms')
+
+
+_ANNOTATION_OVERLAY_ID = '__agentclip_overlay__'
+
+# JavaScript that paints an SVG overlay onto the page from a structured
+# annotation list and returns a description of what landed. Runs inside
+# the page context via page.evaluate(). Kept here as a single string so
+# the Python side stays simple -- one inject, one screenshot, one remove.
+_DRAW_ANNOTATIONS_JS = r"""
+(({annotations, overlayId}) => {
+  // Idempotent cleanup -- a previous screenshot's overlay may still be
+  // hanging around if the prior call crashed before remove.
+  const prev = document.getElementById(overlayId);
+  if (prev) prev.remove();
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.id = overlayId;
+  svg.style.cssText = (
+    'position:fixed;top:0;left:0;width:100vw;height:100vh;' +
+    'pointer-events:none;z-index:2147483647;'
+  );
+  svg.setAttribute('width', String(window.innerWidth));
+  svg.setAttribute('height', String(window.innerHeight));
+  svg.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const arrowMarker = document.createElementNS(SVG_NS, 'marker');
+  arrowMarker.setAttribute('id', `${overlayId}-arrowhead`);
+  arrowMarker.setAttribute('viewBox', '0 0 10 10');
+  arrowMarker.setAttribute('refX', '9');
+  arrowMarker.setAttribute('refY', '5');
+  arrowMarker.setAttribute('markerWidth', '7');
+  arrowMarker.setAttribute('markerHeight', '7');
+  arrowMarker.setAttribute('orient', 'auto-start-reverse');
+  const arrowPath = document.createElementNS(SVG_NS, 'path');
+  arrowPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+  arrowPath.setAttribute('fill', '#ff3b30');
+  arrowMarker.appendChild(arrowPath);
+  defs.appendChild(arrowMarker);
+  svg.appendChild(defs);
+
+  const placed = [];
+  const failed = [];
+
+  function rectFromTarget(target) {
+    if (!target) return null;
+    if (typeof target === 'string') {
+      const el = document.querySelector(target);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    }
+    if (typeof target === 'object' && 'x' in target && 'y' in target) {
+      // Pixel-coordinate fallback. width/height optional -- treat as point.
+      return {
+        x: target.x,
+        y: target.y,
+        w: target.w ?? 0,
+        h: target.h ?? 0,
+      };
+    }
+    return null;
+  }
+
+  function makeLabel(text, x, y, color) {
+    if (!text) return null;
+    const padding = 8;
+    const fontSize = 16;
+    const charWidth = fontSize * 0.6;
+    const textWidth = text.length * charWidth;
+    const boxWidth = textWidth + padding * 2;
+    const boxHeight = fontSize + padding * 2;
+    const group = document.createElementNS(SVG_NS, 'g');
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('x', String(x));
+    rect.setAttribute('y', String(y));
+    rect.setAttribute('width', String(boxWidth));
+    rect.setAttribute('height', String(boxHeight));
+    rect.setAttribute('rx', '4');
+    rect.setAttribute('fill', color);
+    rect.setAttribute('fill-opacity', '0.95');
+    group.appendChild(rect);
+    const t = document.createElementNS(SVG_NS, 'text');
+    t.setAttribute('x', String(x + padding));
+    t.setAttribute('y', String(y + padding + fontSize - 2));
+    t.setAttribute('fill', 'white');
+    t.setAttribute('font-family', '-apple-system, system-ui, sans-serif');
+    t.setAttribute('font-size', String(fontSize));
+    t.setAttribute('font-weight', '600');
+    t.textContent = text;
+    group.appendChild(t);
+    return { node: group, width: boxWidth, height: boxHeight };
+  }
+
+  for (let i = 0; i < annotations.length; i++) {
+    const ann = annotations[i];
+    const color = ann.color || '#ff3b30';
+    const padding = ann.padding ?? 12;
+
+    if (ann.type === 'circle' || ann.type === 'rect') {
+      const rect = rectFromTarget(ann.target);
+      if (!rect) {
+        failed.push({ index: i, type: ann.type, reason: 'target not found' });
+        continue;
+      }
+      if (ann.type === 'circle') {
+        const cx = rect.x + rect.w / 2;
+        const cy = rect.y + rect.h / 2;
+        const r = Math.max(rect.w, rect.h) / 2 + padding;
+        const circle = document.createElementNS(SVG_NS, 'circle');
+        circle.setAttribute('cx', String(cx));
+        circle.setAttribute('cy', String(cy));
+        circle.setAttribute('r', String(r));
+        circle.setAttribute('stroke', color);
+        circle.setAttribute('stroke-width', '4');
+        circle.setAttribute('fill', 'none');
+        svg.appendChild(circle);
+        if (ann.label) {
+          const lbl = makeLabel(ann.label, cx - 80, cy + r + 8, color);
+          if (lbl) svg.appendChild(lbl.node);
+        }
+        placed.push({ index: i, type: 'circle', cx, cy, r });
+      } else {
+        const r = document.createElementNS(SVG_NS, 'rect');
+        const x = rect.x - padding;
+        const y = rect.y - padding;
+        const w = rect.w + padding * 2;
+        const h = rect.h + padding * 2;
+        r.setAttribute('x', String(x));
+        r.setAttribute('y', String(y));
+        r.setAttribute('width', String(w));
+        r.setAttribute('height', String(h));
+        r.setAttribute('rx', '6');
+        r.setAttribute('stroke', color);
+        r.setAttribute('stroke-width', '4');
+        r.setAttribute('fill', color);
+        r.setAttribute('fill-opacity', '0.12');
+        svg.appendChild(r);
+        if (ann.label) {
+          const lbl = makeLabel(ann.label, x, y + h + 8, color);
+          if (lbl) svg.appendChild(lbl.node);
+        }
+        placed.push({ index: i, type: 'rect', x, y, w, h });
+      }
+    } else if (ann.type === 'arrow') {
+      const fromRect = rectFromTarget(ann.from ?? ann.target);
+      const toRect = rectFromTarget(ann.to);
+      if (!fromRect || !toRect) {
+        failed.push({ index: i, type: 'arrow', reason: 'from or to not found' });
+        continue;
+      }
+      const x1 = fromRect.x + fromRect.w / 2;
+      const y1 = fromRect.y + fromRect.h / 2;
+      const x2 = toRect.x + toRect.w / 2;
+      const y2 = toRect.y + toRect.h / 2;
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', String(x1));
+      line.setAttribute('y1', String(y1));
+      line.setAttribute('x2', String(x2));
+      line.setAttribute('y2', String(y2));
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', '4');
+      line.setAttribute('marker-end', `url(#${overlayId}-arrowhead)`);
+      svg.appendChild(line);
+      if (ann.label) {
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const lbl = makeLabel(ann.label, midX, midY, color);
+        if (lbl) svg.appendChild(lbl.node);
+      }
+      placed.push({ index: i, type: 'arrow', x1, y1, x2, y2 });
+    } else if (ann.type === 'label') {
+      const rect = rectFromTarget(ann.target);
+      if (!rect) {
+        failed.push({ index: i, type: 'label', reason: 'target not found' });
+        continue;
+      }
+      const lbl = makeLabel(
+        ann.label || ann.text || '',
+        rect.x + rect.w + 8,
+        rect.y,
+        color,
+      );
+      if (lbl) {
+        svg.appendChild(lbl.node);
+        placed.push({ index: i, type: 'label', x: rect.x + rect.w + 8, y: rect.y });
+      } else {
+        failed.push({ index: i, type: 'label', reason: 'empty label text' });
+      }
+    } else {
+      failed.push({ index: i, type: ann.type, reason: 'unknown annotation type' });
+    }
+  }
+
+  document.body.appendChild(svg);
+  return { placed, failed };
+})
+"""
 
 
 def _browser_screenshot_impl(
     session_id: str,
     out_path: str | None,
     full_page: bool,
+    annotations: list[dict] | None = None,
 ) -> dict:
     session = _get_session(session_id)
     if out_path is None:
@@ -518,9 +726,37 @@ def _browser_screenshot_impl(
         ts = int(time.time() * 1000)
         out_path = str(_DEFAULT_SHOT_DIR / f'{session_id}-{ts}.png')
 
-    session['page'].screenshot(path=out_path, full_page=full_page)
+    page = session['page']
+    annotation_result: dict[str, Any] | None = None
+    if annotations:
+        # Inject the overlay, screenshot with it visible, remove it. Any
+        # failure to place a specific annotation (selector missed, target
+        # off-screen) is surfaced in `failed[]` so the agent can decide
+        # whether to retry with different selectors.
+        annotation_result = page.evaluate(
+            _DRAW_ANNOTATIONS_JS,
+            {'annotations': annotations, 'overlayId': _ANNOTATION_OVERLAY_ID},
+        )
+
+    page.screenshot(path=out_path, full_page=full_page)
+
+    if annotations:
+        # Tear down the overlay so subsequent screenshots / interactions /
+        # page.evaluate calls don't see it. The id is interpolated here so
+        # the same Python constant drives both inject and remove.
+        page.evaluate(
+            '(overlayId) => { '
+            'const el = document.getElementById(overlayId); '
+            'if (el) el.remove(); '
+            '}',
+            _ANNOTATION_OVERLAY_ID,
+        )
+
     size = Path(out_path).stat().st_size
-    return {'path': out_path, 'bytes': size, 'full_page': full_page}
+    result: dict[str, Any] = {'path': out_path, 'bytes': size, 'full_page': full_page}
+    if annotation_result is not None:
+        result['annotations'] = annotation_result
+    return result
 
 
 def _browser_get_text_impl(session_id: str, selector: str | None) -> dict:
@@ -536,8 +772,99 @@ def _browser_get_text_impl(session_id: str, selector: str | None) -> dict:
 def _browser_close_impl(session_id: str) -> dict:
     if session_id not in _browser_sessions:
         return {'closed': False, 'reason': 'session not found (already closed?)'}
+    session = _browser_sessions[session_id]
+    result: dict[str, Any] = {'closed': True}
+    if session.get('record_video') and session.get('recording_active'):
+        # Finalize the recording on close so the agent doesn't lose the
+        # video if they forgot to call stop_recording.
+        path = _finalize_recording(session_id)
+        if path is not None:
+            result['video_path'] = path
     _close_session(session_id)
-    return {'closed': True}
+    return result
+
+
+def _browser_start_recording_impl(session_id: str) -> dict:
+    """Mid-session start is not supported by Playwright -- recording must
+    be enabled at context creation. If the session was opened with
+    record_video=True, recording is already active and this is a no-op
+    that returns confirmation. Otherwise, this raises with the remediation
+    the agent should follow."""
+    session = _get_session(session_id)
+    if not session.get('record_video'):
+        raise ValueError(
+            f'session {session_id!r} was not opened with record_video=True. '
+            'Playwright cannot start recording mid-session. Close this session '
+            'and re-open with browser_open(url=..., record_video=True), then '
+            'drive the flow. Use browser_stop_recording to finalize the video.'
+        )
+    if not session.get('recording_active'):
+        raise ValueError(
+            f'session {session_id!r} already had its recording finalized. '
+            'Open a new session with record_video=True.'
+        )
+    return {'session_id': session_id, 'recording_active': True}
+
+
+def _browser_stop_recording_impl(session_id: str) -> dict:
+    """Finalize the recording. Closes the page+context (which is what
+    Playwright requires to flush the WebM to disk), then returns the path.
+    The session id is no longer usable after this -- open a new session
+    if you need to keep driving the page."""
+    session = _get_session(session_id)
+    if not session.get('record_video'):
+        raise ValueError(
+            f'session {session_id!r} was not opened with record_video=True. '
+            'Nothing to stop. Re-open the session with record_video=True next time.'
+        )
+    if not session.get('recording_active'):
+        raise ValueError(
+            f'session {session_id!r} already had its recording finalized. '
+            'The video path was returned at that time.'
+        )
+    path = _finalize_recording(session_id)
+    _close_session(session_id)
+    if path is None:
+        raise RuntimeError(
+            f'recording finalize for {session_id!r} returned no path. '
+            'The context may have closed before the video flushed; '
+            're-run the flow with record_video=True.'
+        )
+    size = Path(path).stat().st_size if Path(path).exists() else 0
+    return {
+        'session_id': session_id,
+        'path': path,
+        'bytes': size,
+        'format': 'webm',
+    }
+
+
+def _finalize_recording(session_id: str) -> str | None:
+    """Flush the in-progress video to disk and return its path.
+
+    Playwright writes the video when the *page* closes within a context
+    that has record_video_dir set. We close the page to force the flush,
+    then read page.video.path(). Returns None if anything fails -- callers
+    treat the recording as lost in that case rather than blocking close."""
+    session = _browser_sessions.get(session_id)
+    if session is None:
+        return None
+    page = session.get('page')
+    video = getattr(page, 'video', None) if page is not None else None
+    if video is None:
+        session['recording_active'] = False
+        return None
+    try:
+        page.close()
+    except Exception:  # noqa: BLE001 - cleanup best effort
+        pass
+    try:
+        path = str(video.path())
+    except Exception:  # noqa: BLE001 - cleanup best effort
+        path = None
+    session['recording_active'] = False
+    session['video_path'] = path
+    return path
 
 
 def _browser_list_sessions_impl() -> dict:
@@ -631,6 +958,19 @@ async def browser_open(
             )
         ),
     ] = 'networkidle',
+    record_video: Annotated[
+        bool,
+        Field(
+            description=(
+                'Record a viewport-only WebM video of the whole session. '
+                'Pass true when motion is the story (animations, drag-and-drop, '
+                'race conditions visible only in sequence). Playwright requires '
+                'this be set at session open time -- you cannot start recording '
+                'mid-session. Call browser_stop_recording to finalize and get '
+                'the file path. Defaults to false (still PNGs only).'
+            )
+        ),
+    ] = False,
 ) -> dict:
     """Open a new browser session at ``url``. Returns a session_id used by
     every other browser tool, plus the resolved final URL and page title.
@@ -641,8 +981,41 @@ async def browser_open(
     """
     return await _run_in_browser_thread(
         _browser_open_impl,
-        url, viewport_width, viewport_height, headless, wait_until,
+        url,
+        viewport_width,
+        viewport_height,
+        headless,
+        wait_until,
+        record_video,
     )
+
+
+@mcp.tool()
+async def browser_start_recording(
+    session_id: Annotated[str, Field(description='Session id from browser_open.')],
+) -> dict:
+    """Confirm a recording is in progress for this session.
+
+    Playwright cannot start recording in an already-open session, so the
+    real switch is the ``record_video=True`` flag on ``browser_open``. If
+    that flag was set, this returns ``{recording_active: true}`` -- nothing
+    further to do. If it wasn't, this raises a clear error explaining how
+    to re-open the session correctly. Call ``browser_stop_recording`` to
+    finalize the video and get the file path."""
+    return await _run_in_browser_thread(_browser_start_recording_impl, session_id)
+
+
+@mcp.tool()
+async def browser_stop_recording(
+    session_id: Annotated[str, Field(description='Session id from browser_open.')],
+) -> dict:
+    """Finalize the video for this session and return the path on disk.
+
+    Pass the returned ``path`` to ``slideshow_add_slide`` as ``media_path``
+    to attach the motion clip as a slide. After this call the session is
+    closed -- open a new one if you need to keep driving. The video is a
+    viewport-only WebM, same privacy guarantee as ``browser_screenshot``."""
+    return await _run_in_browser_thread(_browser_stop_recording_impl, session_id)
 
 
 @mcp.tool()
@@ -657,7 +1030,10 @@ async def browser_navigate(
     """Navigate the existing session's tab to ``url``. Reuses the same
     viewport and browser context."""
     return await _run_in_browser_thread(
-        _browser_navigate_impl, session_id, url, wait_until,
+        _browser_navigate_impl,
+        session_id,
+        url,
+        wait_until,
     )
 
 
@@ -697,7 +1073,13 @@ async def browser_type(
     into whatever currently has focus. Returns the located element's
     bounding box so the agent can verify it found the right thing."""
     return await _run_in_browser_thread(
-        _browser_type_impl, session_id, text, placeholder, selector, role, delay_ms,
+        _browser_type_impl,
+        session_id,
+        text,
+        placeholder,
+        selector,
+        role,
+        delay_ms,
     )
 
 
@@ -712,8 +1094,7 @@ async def browser_click(
         str | None,
         Field(
             description=(
-                'Locate by visible text (exact match preferred). '
-                'Used if selector is unset.'
+                'Locate by visible text (exact match preferred). Used if selector is unset.'
             )
         ),
     ] = None,
@@ -730,7 +1111,12 @@ async def browser_click(
     Returns the page URL and title after the click in case it triggered
     a navigation."""
     return await _run_in_browser_thread(
-        _browser_click_impl, session_id, selector, text, role, name,
+        _browser_click_impl,
+        session_id,
+        selector,
+        text,
+        role,
+        name,
     )
 
 
@@ -776,7 +1162,10 @@ async def browser_wait_for_text(
     in time. The agent should usually run a screenshot right after this
     returns successfully — that's the whole point of waiting."""
     return await _run_in_browser_thread(
-        _browser_wait_for_text_impl, session_id, text, timeout_ms,
+        _browser_wait_for_text_impl,
+        session_id,
+        text,
+        timeout_ms,
     )
 
 
@@ -802,10 +1191,31 @@ async def browser_screenshot(
             )
         ),
     ] = False,
+    annotations: Annotated[
+        list[dict] | None,
+        Field(
+            description=(
+                'Optional list of annotations to bake into the screenshot. '
+                'Each item is a dict: {"type": "circle"|"rect"|"arrow"|"label", '
+                '"target": "<css selector>" or {"x": int, "y": int, "w": int?, "h": int?}, '
+                '"label": "<optional text>", "color": "<optional hex, default #ff3b30>", '
+                '"padding": <optional int, default 12>}. arrow uses "from" + "to" instead of '
+                '"target". Direct attention to the specific element the slide caption is '
+                'talking about — captions like "watch the X" should annotate X. The result '
+                'dict reports placed/failed per annotation so you can recover from selector '
+                'misses (e.g. element was off-screen) by retrying with a better selector.'
+            )
+        ),
+    ] = None,
 ) -> dict:
     """Capture a viewport-scoped PNG and write it to disk. Returns the
     written path and byte size — agents pass the returned path straight
     into ``slideshow_add_slide`` as ``media_path``.
+
+    With ``annotations``, an SVG overlay (circles/rectangles/arrows/labels
+    tied to CSS selectors) is injected onto the page before capture and
+    baked into the PNG — so it ships everywhere downstream (PDF, MP4
+    frames, OG card, raw <img> paste) without any render-time work.
 
     Critically, this method only ever captures the browser viewport (or
     the full scrollable page); it can never capture the OS desktop, IDE
@@ -813,7 +1223,11 @@ async def browser_screenshot(
     OS-screencapture leaks (which historically happened when agents
     fell back to ``screencapture -x``) are impossible here."""
     return await _run_in_browser_thread(
-        _browser_screenshot_impl, session_id, out_path, full_page,
+        _browser_screenshot_impl,
+        session_id,
+        out_path,
+        full_page,
+        annotations,
     )
 
 
@@ -824,8 +1238,7 @@ async def browser_get_text(
         str | None,
         Field(
             description=(
-                'CSS selector for the element to read. If omitted, '
-                'returns the full body innerText.'
+                'CSS selector for the element to read. If omitted, returns the full body innerText.'
             )
         ),
     ] = None,

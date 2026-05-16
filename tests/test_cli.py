@@ -207,3 +207,48 @@ def test_first_create_nudge_skipped_when_whoami_set(isolated_state, monkeypatch)
     result = runner.invoke(app, ['slideshow', 'create', '--title', 'silent'])
     assert result.exit_code == 0
     assert 'tip:' not in result.stdout.lower()
+
+
+def test_capture_help_lists_required_flags():
+    """Smoke test: `agentclip capture --help` works and lists URL + --out
+    as required. Pins the public surface so a rename doesn't silently
+    break documented usage."""
+    runner = CliRunner()
+    result = runner.invoke(app, ['capture', '--help'])
+    assert result.exit_code == 0, result.output
+    assert 'URL to load' in result.output
+    assert '--out' in result.output
+    assert 'viewport-only' in result.output.lower()
+
+
+def test_capture_surfaces_missing_playwright(monkeypatch, tmp_path):
+    """If Playwright is somehow not importable, surface the install hint
+    instead of a stack trace -- agents read CLI errors and need a clear
+    next step."""
+    import sys as _sys
+    import importlib
+
+    runner = CliRunner()
+    real_import = importlib.import_module
+
+    def fake_import(name, *args, **kwargs):
+        if name == 'playwright.sync_api':
+            raise ImportError('no module named playwright.sync_api')
+        return real_import(name, *args, **kwargs)
+
+    # The CLI uses `from playwright.sync_api import sync_playwright`, which
+    # goes through __import__. Patch __import__ for that one module.
+    real_builtins_import = (
+        __builtins__['__import__'] if isinstance(__builtins__, dict) else __builtins__.__import__
+    )
+
+    def fake_builtins_import(name, *args, **kwargs):
+        if name == 'playwright.sync_api':
+            raise ImportError('no module named playwright.sync_api')
+        return real_builtins_import(name, *args, **kwargs)
+
+    monkeypatch.setattr('builtins.__import__', fake_builtins_import)
+    out = tmp_path / 'x.png'
+    result = runner.invoke(app, ['capture', 'https://example.com', '--out', str(out)])
+    assert result.exit_code != 0
+    assert 'playwright is not installed' in result.output.lower()
