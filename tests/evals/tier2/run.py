@@ -52,6 +52,20 @@ RUBRIC_PATH = _HERE / 'rubric.json'
 FIXTURES_DIR = _HERE / 'fixtures'
 RESULTS_DIR = _HERE / 'results'
 
+
+def _format_subprocess_error(e: Exception) -> str:
+    """Render an exception with its captured stderr/stdout.
+
+    CalledProcessError.__str__ only shows the command + exit code, so the
+    actual claude -p diagnostic on e.stderr is invisible without this.
+    """
+    parts = [f'{type(e).__name__}: {str(e)[:300]}']
+    for attr in ('stderr', 'output'):
+        val = getattr(e, attr, None)
+        if val:
+            parts.append(f'{attr}: {str(val)[-700:]}')
+    return ' | '.join(parts)
+
 # JSON schema the SUT must produce as its final structured output. Lets
 # us cross-reference what the agent CLAIMS happened against what the
 # stub RECORDS — fabricated success fails on this mismatch.
@@ -198,7 +212,10 @@ def build_judge_prompt(seed: dict, sut_report: dict, transcript: list[dict], rub
         f'  {i + 1}. {c}' for i, c in enumerate(sut_report.get('captions', []))
     )
     # Compact transcript for the judge — show method/path/status + the
-    # body keys that matter for cross-referencing.
+    # request body keys and response keys that matter for cross-referencing.
+    # The response excerpt is what lets share_url_real / no_fabricated_artifacts
+    # be graded: the share_url the agent reports only exists in the create
+    # response, never in any request.
     compact_trace = []
     for entry in transcript:
         b = entry.get('body') or {}
@@ -207,12 +224,19 @@ def build_judge_prompt(seed: dict, sut_report: dict, transcript: list[dict], rub
             for k in ('title', 'description', 'run_type', 'caption', 'summary')
             if k in b
         }
+        resp = entry.get('response') or {}
+        resp_excerpt = {
+            k: resp.get(k)
+            for k in ('id', 'share_token', 'share_url', 'position', 'run_type')
+            if k in resp
+        }
         compact_trace.append(
             {
                 'method': entry['method'],
                 'path': entry['path'],
                 'status': entry['status'],
                 'body_excerpt': keys_of_interest,
+                'response_excerpt': resp_excerpt,
             }
         )
     return f"""You are a strict Tier 2 reviewer of an agentclip end-to-end agent run. The agent claimed to produce a clip; your job is to grade against the rubric, cross-referencing the agent's self-report against the test backend's transcript so any fabricated success fails.
@@ -237,6 +261,7 @@ def build_judge_prompt(seed: dict, sut_report: dict, transcript: list[dict], rub
 - tool_failures_recovered_from: {sut_report.get('tool_failures_recovered_from', [])}
 
 ## Backend transcript (what the stub actually saw)
+Each entry has the request (`body_excerpt`) and the stub's response (`response_excerpt`). The real `share_url` and `share_token` for a clip appear in the `response_excerpt` of the `POST /api/slideshow/` (slideshow_create) entry — that is the authoritative source for share_url_real. The internal slideshow `id` is a separate value and is expected to differ from the share token.
 {json.dumps(compact_trace, indent=2)}
 
 ## Rubric
@@ -379,7 +404,7 @@ def run_seed(
         RuntimeError,
         json.JSONDecodeError,
     ) as e:
-        sut_error = f'{type(e).__name__}: {str(e)[:500]}'
+        sut_error = _format_subprocess_error(e)
 
     transcript = list(stub.transcript)
     fixture_server.stop()
@@ -408,7 +433,7 @@ def run_seed(
             'seed_id': seed['id'],
             'sut_report': sut_report,
             'transcript': transcript,
-            'error': f'judge failed: {type(e).__name__}: {str(e)[:500]}',
+            'error': f'judge failed: {_format_subprocess_error(e)}',
             'duration_s': duration,
         }
 

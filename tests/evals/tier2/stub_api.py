@@ -169,18 +169,21 @@ def _make_handler(stub: StubAPI):
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return {'_raw_len': len(raw)}
 
-        def _record(self, method: str, body: Any, status: int) -> None:
+        def _json(self, status: int, payload: dict) -> None:
+            # Record request + response together. The judge cross-references
+            # the agent's reported share_url against the create response,
+            # so the response payload must be in the transcript -- recording
+            # only the request silently makes share_url_real unpassable.
             stub.transcript.append(
                 {
-                    'method': method,
+                    'method': self.command,
                     'path': self.path,
-                    'body': body,
+                    'body': getattr(self, '_req_body', None),
                     'status': status,
+                    'response': payload,
                     't': time.time(),
                 }
             )
-
-        def _json(self, status: int, payload: dict) -> None:
             data = json.dumps(payload).encode('utf-8')
             self.send_response(status)
             self.send_header('Content-Type', 'application/json')
@@ -190,16 +193,15 @@ def _make_handler(stub: StubAPI):
 
         def do_POST(self) -> None:  # noqa: N802 — http.server signature
             body = self._read_body()
+            self._req_body = body
             # ----- slideshow_create -----
             if self.path == '/api/slideshow/' or self.path == '/api/slideshow':
                 run_type = body.get('run_type')
                 if stub.fail_create_status:
                     status = stub.fail_create_status
                     stub.fail_create_status = None
-                    self._record('POST', body, status)
                     return self._json(status, {'detail': 'forced failure'})
                 if stub.fail_run_type and run_type == stub.fail_run_type:
-                    self._record('POST', body, 400)
                     return self._json(400, {'run_type': [f'"{run_type}" is not a valid choice.']})
                 sid = uuid.uuid4().hex
                 share = _share_token()
@@ -216,17 +218,14 @@ def _make_handler(stub: StubAPI):
                     'summary': '',
                 }
                 stub.slideshows[sid] = slideshow
-                self._record('POST', body, 201)
                 return self._json(201, slideshow)
             # ----- slideshow_add_slide -----
             if self.path.startswith('/api/slideshow/') and self.path.endswith('/slides/'):
                 sid = self.path.split('/')[3]
                 if sid not in stub.slideshows:
-                    self._record('POST', body, 404)
                     return self._json(404, {'detail': 'not found'})
                 if stub.fail_next_add_slide:
                     stub.fail_next_add_slide = False
-                    self._record('POST', body, 500)
                     return self._json(500, {'detail': 'forced failure'})
                 # Slide ids are int in the SDK's pydantic model — return an
                 # int, not a uuid hex string, or the SDK rejects with a
@@ -242,29 +241,25 @@ def _make_handler(stub: StubAPI):
                     'media_url': f'{stub.base_url}/fake-media/{slide_id}.png',
                 }
                 stub.slideshows[sid]['slides'].append({**body, **slide})
-                self._record('POST', body, 201)
                 return self._json(201, slide)
-            self._record('POST', body, 404)
             return self._json(404, {'detail': f'unrouted POST {self.path}'})
 
         def do_PATCH(self) -> None:  # noqa: N802
             body = self._read_body()
+            self._req_body = body
             # ----- slideshow_set_summary / update -----
             if self.path.startswith('/api/slideshow/'):
                 sid = self.path.rstrip('/').split('/')[-1]
                 if sid not in stub.slideshows:
-                    self._record('PATCH', body, 404)
                     return self._json(404, {'detail': 'not found'})
                 stub.slideshows[sid].update(
                     {k: v for k, v in body.items() if k in {'summary', 'title', 'description'}}
                 )
-                self._record('PATCH', body, 200)
                 return self._json(200, stub.slideshows[sid])
-            self._record('PATCH', body, 404)
             return self._json(404, {'detail': f'unrouted PATCH {self.path}'})
 
         def do_GET(self) -> None:  # noqa: N802
-            self._record('GET', None, 200)
+            self._req_body = None
             if self.path.startswith('/api/v1/slideshow/'):
                 share = self.path.rstrip('/').split('/')[-1]
                 for s in stub.slideshows.values():
