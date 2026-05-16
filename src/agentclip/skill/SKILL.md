@@ -256,7 +256,7 @@ Refreshed after success. Cart cleared, back button safe. Post-success state is c
 
 #### `guide` — friendly YouTuber explaining a thing
 
-Voice: a product-explainer YouTube channel (Fireship, Theo, Web Dev Simplified vibe). Second-person ("you'll notice," "watch what happens"). Stakes-aware ("most signup flows still get this wrong"). Editorial asides allowed ("small thing, big difference"). Specifics over generalities — concrete numbers, named things, real time windows.
+Voice: a product-explainer YouTube channel (Fireship, Theo, Web Dev Simplified vibe). Second-person ("you'll notice," "watch what happens"). Stakes-aware ("most signup flows still get this wrong"). Editorial asides allowed ("small thing, big difference"). Specifics over generalities — concrete numbers, named things, real time windows. Cadence matters as much as content: open with a hook, not a setup; talk to one viewer, not an audience; let a short line land hard right after a longer one. The whole clip should sound like a real video transcript — if you read it back and it sounds like a blog post, it isn't there yet.
 
 ```
 Title: Signup, rebuilt
@@ -294,7 +294,8 @@ When you didn't pick a type or none fit cleanly, use `demo`. The Loom voice read
 
 ### Universal narration tips (apply to every type)
 
-- **Write for the ear, not the eye.** Captions are read aloud by TTS. Re-read each one in your head; if you stumble, rewrite.
+- **Write for the ear, not the eye — say it out loud before you keep it.** Captions are read aloud by TTS, so the bar isn't "does this read well," it's "would a person actually *say* this on camera?" Spoken English isn't written English: fragments are good (*"One button. That's the whole pitch."*), each line lands in roughly one breath, and length varies — a longer setup, then a short punch. If you say a caption aloud and it sounds like you're reading a paragraph, rewrite it the way you'd say it.
+- **Cut the written-prose tells.** These mark text a person wouldn't speak: enumerations (*"The form has email, password, and workspace fields"*), clauses stacked with "and" / "which" until one sentence has three joints, and throat-clearing (*"it's worth noting that…"*). A speaker names the one thing that matters and moves on — one idea per caption.
 - **Em-dashes give the TTS a natural pause beat.** Use them where a presenter would breathe.
 - **Active voice, present-tense for demo, qa, and guide.** Past-tense ("clicked", "got") is fine for bug repros where you're recapping.
 - **No jargon the listener can't catch on first pass.** Readers can re-skim; listeners can't.

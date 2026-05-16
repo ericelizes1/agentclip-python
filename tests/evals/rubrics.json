@@ -49,6 +49,11 @@
         "definition": "Each caption lands on the non-obvious detail, not the literal screen content. Captions that enumerate visible elements ('Page shows hero, nav, footer') fail. Captions that name what is interesting or surprising about that state pass."
       },
       {
+        "name": "reads_as_speech_not_prose",
+        "weight": 0.15,
+        "definition": "Read the description, every caption, and the summary aloud. They must sound like a real video transcript -- someone talking on camera -- not written prose. Spoken text uses fragments, varied sentence length, and one idea per line. Flag written-prose tells: enumerations ('X has A, B, and C'), clauses stacked with 'and'/'which' into one long sentence, throat-clearing ('it is worth noting that'), and tidy evenly-balanced sentences that read like documentation. A clip can hit every voice marker and still fail this if it reads like a blog post."
+      },
+      {
         "name": "summary_under_80_words",
         "weight": 0.05,
         "definition": "Summary is 80 words or fewer."
