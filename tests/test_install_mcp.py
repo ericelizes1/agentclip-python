@@ -15,6 +15,7 @@ from agentclip.cli import app
 from agentclip.setup import (
     _install_codex_toml_registration,
     _install_opencode_mcp_registration,
+    default_mcp_config_path,
     install_host_mcp_registrations,
     install_mcp_registration,
     uninstall_mcp_registration,
@@ -25,6 +26,42 @@ runner = CliRunner()
 
 def _read(path: Path) -> dict:
     return json.loads(path.read_text())
+
+
+# --- default config path ---------------------------------------------------
+
+
+def test_claude_default_path_is_claude_json(monkeypatch):
+    """Pin the Claude Code config location. Claude Code reads MCP servers
+    from ~/.claude.json (top-level mcpServers map). The legacy
+    ~/.claude/mcp.json path is not loaded by current versions -- writing
+    there is a silent no-op from the user's perspective."""
+    monkeypatch.delenv('AGENTCLIP_MCP_CONFIG', raising=False)
+    monkeypatch.delenv('AGENTCLIP_CLAUDE_MCP_CONFIG', raising=False)
+    assert default_mcp_config_path('claude') == Path.home() / '.claude.json'
+
+
+def test_install_preserves_unrelated_top_level_keys(tmp_path):
+    """~/.claude.json holds projects, history, oauthAccount, and dozens of
+    other top-level keys besides mcpServers. The install must touch only
+    mcpServers and leave the rest exactly as it found them."""
+    target = tmp_path / 'claude.json'
+    original = {
+        'oauthAccount': {'accountId': 'abc-123'},
+        'projects': {'/some/path': {'history': [1, 2, 3]}},
+        'numStartups': 42,
+        'mcpServers': {'other-server': {'command': 'other-mcp'}},
+    }
+    target.write_text(json.dumps(original))
+
+    install_mcp_registration(config_path=target, quiet=True)
+
+    config = _read(target)
+    assert config['oauthAccount'] == {'accountId': 'abc-123'}
+    assert config['projects'] == {'/some/path': {'history': [1, 2, 3]}}
+    assert config['numStartups'] == 42
+    assert config['mcpServers']['other-server'] == {'command': 'other-mcp'}
+    assert config['mcpServers']['agentclip'] == {'command': 'agentclip-mcp'}
 
 
 # --- install_mcp_registration ----------------------------------------------
@@ -79,9 +116,7 @@ def test_install_updates_when_command_drifts(tmp_path):
     install should put it back to the canonical command."""
     target = tmp_path / 'mcp.json'
     target.write_text(
-        json.dumps(
-            {'mcpServers': {'agentclip': {'command': '/some/old/path/agentclip-mcp'}}}
-        )
+        json.dumps({'mcpServers': {'agentclip': {'command': '/some/old/path/agentclip-mcp'}}})
     )
 
     _, status = install_mcp_registration(config_path=target, quiet=True)

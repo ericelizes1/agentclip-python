@@ -168,11 +168,33 @@ def default_mcp_config_path(host: HostName = 'claude') -> Path:
         return Path(override).expanduser()
 
     defaults = {
-        'claude': Path.home() / '.claude' / 'mcp.json',
+        # Claude Code reads MCP servers from the top-level `mcpServers` map
+        # in ~/.claude.json. The legacy ~/.claude/mcp.json path is not loaded
+        # by current Claude Code versions, so writing there is a silent no-op
+        # from the user's perspective — the install "succeeds" but tools
+        # never appear. Override with AGENTCLIP_CLAUDE_MCP_CONFIG.
+        'claude': Path.home() / '.claude.json',
         'codex': Path.home() / '.codex' / 'config.json',
         'opencode': Path.home() / '.config' / 'opencode' / 'opencode.json',
     }
     return defaults[host]
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write ``content`` to ``path`` atomically.
+
+    Writes to ``path.tmp`` first, fsyncs, then ``os.replace`` -- POSIX
+    guarantees the rename is atomic, so concurrent readers (e.g. Claude
+    Code reading ~/.claude.json) see either the old or the new file,
+    never a half-written one. This matters most for ~/.claude.json, which
+    Claude Code itself writes to during normal session activity.
+    """
+    tmp_path = path.with_suffix(path.suffix + '.tmp')
+    with open(tmp_path, 'w', encoding='utf-8') as fp:
+        fp.write(content)
+        fp.flush()
+        os.fsync(fp.fileno())
+    os.replace(tmp_path, path)
 
 
 def _read_mcp_config(path: Path) -> dict:
@@ -259,7 +281,7 @@ def install_mcp_registration(
         servers[_MCP_SERVER_NAME] = desired
         status = 'updated'
 
-    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
+    _atomic_write_text(target, json.dumps(config, indent=2, sort_keys=True) + '\n')
 
     if not quiet:
         if status == 'unchanged':
@@ -295,7 +317,7 @@ def _install_codex_json_registration(
         servers[_MCP_SERVER_NAME] = desired
         status = 'updated'
 
-    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
+    _atomic_write_text(target, json.dumps(config, indent=2, sort_keys=True) + '\n')
     if not quiet:
         print(f'  codex: mcp registration {status}: {target}')
     return target, status
@@ -321,9 +343,7 @@ def _install_codex_toml_registration(*, quiet: bool = False) -> tuple[Path, str]
         return target, status
 
     text = target.read_text() if target.exists() else ''
-    section_re = re.compile(
-        rf'(?ms)^\[mcp_servers\.{re.escape(_MCP_SERVER_NAME)}\]\n.*?(?=^\[|\Z)'
-    )
+    section_re = re.compile(rf'(?ms)^\[mcp_servers\.{re.escape(_MCP_SERVER_NAME)}\]\n.*?(?=^\[|\Z)')
     if existing is None:
         status = 'added'
         new_text = text.rstrip() + block + '\n' if text.strip() else block.lstrip()
@@ -335,7 +355,7 @@ def _install_codex_toml_registration(*, quiet: bool = False) -> tuple[Path, str]
         else:
             new_text = text.rstrip() + block + '\n'
 
-    target.write_text(new_text)
+    _atomic_write_text(target, new_text)
     if not quiet:
         print(f'  codex: mcp registration {status}: {target}')
     return target, status
@@ -369,7 +389,7 @@ def _install_opencode_mcp_registration(
         servers[_MCP_SERVER_NAME] = desired
         status = 'updated'
 
-    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
+    _atomic_write_text(target, json.dumps(config, indent=2, sort_keys=True) + '\n')
     if not quiet:
         print(f'  opencode: mcp registration {status}: {target}')
     return target, status
@@ -397,9 +417,7 @@ def install_host_mcp_registrations(
             results.append((host, toml_path, toml_status))
             continue
         if host == 'opencode':
-            path, status = _install_opencode_mcp_registration(
-                config_path=config_path, quiet=quiet
-            )
+            path, status = _install_opencode_mcp_registration(config_path=config_path, quiet=quiet)
             results.append((host, path, status))
             continue
         raise ValueError(f'unsupported host: {host}')
@@ -426,7 +444,7 @@ def uninstall_mcp_registration(
         return target, 'not_present'
 
     del servers[_MCP_SERVER_NAME]
-    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
+    _atomic_write_text(target, json.dumps(config, indent=2, sort_keys=True) + '\n')
     if not quiet:
         print(f'  removed agentclip entry from {target}')
     return target, 'removed'
@@ -445,7 +463,7 @@ def _uninstall_codex_json_registration(
     if _MCP_SERVER_NAME not in servers:
         return target, 'not_present'
     del servers[_MCP_SERVER_NAME]
-    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
+    _atomic_write_text(target, json.dumps(config, indent=2, sort_keys=True) + '\n')
     if not quiet:
         print(f'  codex: removed mcp entry from {target}')
     return target, 'removed'
@@ -457,13 +475,11 @@ def _uninstall_codex_toml_registration(*, quiet: bool = False) -> tuple[Path, st
         return target, 'not_present'
     _read_toml_config(target)
     text = target.read_text()
-    section_re = re.compile(
-        rf'(?ms)^\[mcp_servers\.{re.escape(_MCP_SERVER_NAME)}\]\n.*?(?=^\[|\Z)'
-    )
+    section_re = re.compile(rf'(?ms)^\[mcp_servers\.{re.escape(_MCP_SERVER_NAME)}\]\n.*?(?=^\[|\Z)')
     if not section_re.search(text):
         return target, 'not_present'
     new_text = section_re.sub('', text).strip()
-    target.write_text(new_text + '\n' if new_text else '')
+    _atomic_write_text(target, new_text + '\n' if new_text else '')
     if not quiet:
         print(f'  codex: removed mcp entry from {target}')
     return target, 'removed'
@@ -482,7 +498,7 @@ def _uninstall_opencode_mcp_registration(
     if _MCP_SERVER_NAME not in servers:
         return target, 'not_present'
     del servers[_MCP_SERVER_NAME]
-    target.write_text(json.dumps(config, indent=2, sort_keys=True) + '\n')
+    _atomic_write_text(target, json.dumps(config, indent=2, sort_keys=True) + '\n')
     if not quiet:
         print(f'  opencode: removed mcp entry from {target}')
     return target, 'removed'
@@ -502,9 +518,7 @@ def uninstall_host_mcp_registrations(
             results.append((host, path, status))
             continue
         if host == 'codex':
-            path, status = _uninstall_codex_json_registration(
-                config_path=config_path, quiet=quiet
-            )
+            path, status = _uninstall_codex_json_registration(config_path=config_path, quiet=quiet)
             results.append((host, path, status))
             toml_path, toml_status = _uninstall_codex_toml_registration(quiet=quiet)
             results.append((host, toml_path, toml_status))
