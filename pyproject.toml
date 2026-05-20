@@ -23,7 +23,7 @@ dependencies = [
     'typer>=0.12',
     'mcp>=1.0',
     'pydantic>=2.6',
-    'playwright>=1.49',
+    'playwright>=1.60.0',
     'pillow>=10.0',
 ]
 
